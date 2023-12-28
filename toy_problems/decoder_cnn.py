@@ -50,7 +50,7 @@ class DecoderCNN(nn.Module):
                 self.features.add_module("transition%d" % (i + 1), trans)
                 num_features = num_features // 2
 
-        self.features.add_module("out", nn.Conv2d(num_features, 3, kernel_size=3, padding=1))
+        self.features.add_module("out", nn.Conv2d(num_features, 2, kernel_size=3, padding=1))
 
     def forward(self, x: Tensor) -> Tensor:
         out = self.features(x)
