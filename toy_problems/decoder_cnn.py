@@ -12,8 +12,10 @@ IMG_DECODE_SIZE = np.prod(IMG_DECODE_SHAPE)
 class _Transition(nn.Sequential):
     def __init__(self, num_input_features: int, num_output_features: int) -> None:
         super().__init__()
-        self.upsample = nn.Upsample(scale_factor=2, mode='nearest')
-        self.conv = nn.Conv2d(num_input_features, num_output_features, 3, padding=1)
+        self.norm = nn.BatchNorm2d(num_input_features)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv = nn.Conv2d(num_input_features, num_output_features, kernel_size=1, stride=1, bias=False)
+        self.pool = nn.ConvTranspose2d(num_output_features, num_output_features, 2, stride=2)
 
 
 class DecoderCNN(nn.Module):
@@ -48,7 +50,7 @@ class DecoderCNN(nn.Module):
                 self.features.add_module("transition%d" % (i + 1), trans)
                 num_features = num_features // 2
 
-        self.features.add_module("out", nn.Conv2d(num_features, 2, 3, padding=1))
+        self.features.add_module("out", nn.Conv2d(num_features, 3, kernel_size=3, padding=1))
 
     def forward(self, x: Tensor) -> Tensor:
         out = self.features(x)
