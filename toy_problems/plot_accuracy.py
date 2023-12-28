@@ -30,7 +30,7 @@ def plot(ax, args, stage, x_offset):
 
 def main(args):
     fig, ax = plt.subplots(1, 1, figsize=(6, 4))
-    plot(ax, args, 'val_id', 0)
+    plot(ax, args, 'val', 0)
     plot(ax, args, 'test', 0.05)
     ax.axhline(0.703, color=next_color(ax), linestyle='--', label='Baseline')
     ax.grid(alpha=0.5, linewidth=0.5)
@@ -46,6 +46,6 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dpath', type=str, default='results')
     parser.add_argument('--n_seeds', type=int, default=5)
-    parser.add_argument('--y_mult', type=int, default=100)
-    parser.add_argument('--beta_range', nargs='+', type=int, default=[1, 2, 3, 4, 5])
+    parser.add_argument('--y_mult', type=int, default=20)
+    parser.add_argument('--beta_range', nargs='+', type=int, default=[1, 4, 8, 12, 16])
     main(parser.parse_args())

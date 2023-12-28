@@ -18,7 +18,7 @@ class ERM(pl.LightningModule):
         self.val_acc = Accuracy('binary')
         self.test_acc = Accuracy('binary')
 
-    def forward(self, x, y, e):
+    def forward(self, x, y, e, c, s):
         batch_size = len(x)
         x = self.cnn(x).view(batch_size, -1)
         y_pred = self.fc(x).view(-1)
