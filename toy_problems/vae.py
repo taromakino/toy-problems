@@ -101,8 +101,8 @@ class Prior(nn.Module):
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, z_size, rank, h_sizes, y_mult, beta, reg_mult, init_sd, lr, weight_decay, lr_infer,
-            n_infer_steps):
+    def __init__(self, task, z_size, rank, h_sizes, y_mult, beta, dropout_prob, reg_mult, init_sd, lr, weight_decay,
+            lr_infer, n_infer_steps):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
@@ -121,6 +121,7 @@ class VAE(pl.LightningModule):
         # p(z_c,z_s|y,e)
         self.prior = Prior(z_size, rank, init_sd)
         # p(y|z)
+        self.dropout = nn.Dropout(dropout_prob)
         self.classifier = SkipMLP(z_size, h_sizes, 1)
         self.test_acc = Accuracy('binary')
 
@@ -139,7 +140,7 @@ class VAE(pl.LightningModule):
         z = torch.hstack((z_c, z_s))
         log_prob_x_z = self.decoder(x, z).mean()
         # E_q(z_c|x)[log p(y|z_c)]
-        y_pred = self.classifier(z_c).view(-1)
+        y_pred = self.classifier(self.dropout(z_c)).view(-1)
         log_prob_y_zc = -F.binary_cross_entropy_with_logits(y_pred, y.float())
         # KL(q(z_c,z_s|x) || p(z_c|e)p(z_s|y,e))
         prior_causal, prior_spurious = self.prior(y, e)
@@ -179,7 +180,7 @@ class VAE(pl.LightningModule):
         log_prob_x_z = self.decoder(x, z)
         # log p(y|z_c)
         z_c, z_s = torch.chunk(z, 2, dim=1)
-        y_pred = self.classifier(z_c).view(-1)
+        y_pred = self.classifier(self.dropout(z_c)).view(-1)
         log_prob_y_zc = -F.binary_cross_entropy_with_logits(y_pred, y.float(), reduction='none')
         # log q(z_c,z_s|x,y,e)
         posterior_causal, posterior_spurious = self.encoder(x, y, e)
