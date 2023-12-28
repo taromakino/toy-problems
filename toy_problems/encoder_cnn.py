@@ -7,7 +7,7 @@ from typing import Tuple
 from torchvision.models.densenet import _DenseBlock, _Transition
 
 
-IMG_ENCODE_SHAPE = (48, 3, 3)
+IMG_ENCODE_SHAPE = (48, 7, 7)
 IMG_ENCODE_SIZE = np.prod(IMG_ENCODE_SHAPE)
 
 
@@ -15,7 +15,7 @@ class EncoderCNN(nn.Module):
     def __init__(
         self,
         growth_rate: int = 8,
-        block_config: Tuple[int, int, int, int] = (3, 3, 3, 3),
+        block_config: Tuple[int, int, int, int] = (3, 3, 3),
         num_init_features: int = 24,
         bn_size: int = 4,
         drop_rate: float = 0,
