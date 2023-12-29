@@ -10,7 +10,7 @@ from utils.enums import Task, EvalStage
 from vae import VAE
 
 
-def make_data(args, task, eval_stage):
+def make_data(args, eval_stage):
     data_train, data_val, data_test = MAKE_DATA[args.dataset](args.train_ratio, args.batch_size, args.eval_batch_size)
     if eval_stage is None:
         data_eval = None
@@ -45,7 +45,7 @@ def make_model(args, task, eval_stage):
 
 def run_task(args, task, eval_stage):
     pl.seed_everything(args.seed)
-    data_train, data_val, data_test, data_eval = make_data(args, task, eval_stage)
+    data_train, data_val, data_test, data_eval = make_data(args, eval_stage)
     model = make_model(args, task, eval_stage)
     if task == Task.ERM:
         if eval_stage is None:
