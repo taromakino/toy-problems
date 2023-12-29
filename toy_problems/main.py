@@ -86,6 +86,10 @@ def main(args):
         run_task(args, Task.CLASSIFY, EvalStage.VAL)
         run_task(args, Task.CLASSIFY, EvalStage.TEST)
         plot_reconstruction.main(args)
+    elif args.task == Task.ERM:
+        run_task(args, Task.ERM, None)
+        run_task(args, Task.ERM, EvalStage.VAL)
+        run_task(args, Task.ERM, EvalStage.TEST)
     else:
         run_task(args, args.task, args.eval_stage)
 
