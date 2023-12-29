@@ -222,10 +222,10 @@ class VAE(pl.LightningModule):
         loss_candidates = torch.hstack(loss_candidates)
         y_candidates = torch.tensor(y_candidates, device=self.device)
         idxs = loss_candidates.argmin(dim=1)
-        loss = loss_candidates[torch.arange(len(idxs)), idxs]
-        log_prob_x_z = log_prob_x_z_candidates[torch.arange(len(idxs)), idxs]
-        log_prob_y_zc = log_prob_y_zc_candidates[torch.arange(len(idxs)), idxs]
-        log_prob_z = log_prob_z_candidates[torch.arange(len(idxs)), idxs]
+        loss = loss_candidates[torch.arange(len(idxs)), idxs].mean()
+        log_prob_x_z = log_prob_x_z_candidates[torch.arange(len(idxs)), idxs].mean()
+        log_prob_y_zc = log_prob_y_zc_candidates[torch.arange(len(idxs)), idxs].mean()
+        log_prob_z = log_prob_z_candidates[torch.arange(len(idxs)), idxs].mean()
         y_pred = y_candidates[idxs]
         return loss, log_prob_x_z, log_prob_y_zc, log_prob_z, y_pred
 
