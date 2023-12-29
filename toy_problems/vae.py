@@ -210,7 +210,7 @@ class VAE(pl.LightningModule):
         y_candidates = []
         for y_value in range(N_CLASSES):
             for e_value in range(N_ENVS):
-                log_prob_x_z, log_prob_y_zc, log_prob_z, loss = self.opt_infer_loss(x, y_value, e_value)
+                loss, log_prob_x_z, log_prob_y_zc, log_prob_z = self.opt_infer_loss(x, y_value, e_value)
                 loss_candidates.append(loss.unsqueeze(-1))
                 log_prob_x_z_candidates.append(log_prob_x_z.unsqueeze(-1))
                 log_prob_y_zc_candidates.append(log_prob_y_zc.unsqueeze(-1))
