@@ -159,10 +159,10 @@ class VAE(pl.LightningModule):
         x, y, e, c, s = batch
         log_prob_x_z, log_prob_y_zc, kl, prior_norm = self.loss(x, y, e)
         loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.reg_mult * prior_norm
-        self.log('val_loss', loss, on_step=False, on_epoch=True)
-        self.log('val_log_prob_x_z', log_prob_x_z, on_step=False, on_epoch=True)
-        self.log('val_log_prob_y_zc', log_prob_y_zc, on_step=False, on_epoch=True)
-        self.log('val_kl', kl, on_step=False, on_epoch=True)
+        self.log('val_log_prob_x_z', log_prob_x_z, on_step=False, on_epoch=True, add_dataloader_idx=False)
+        self.log('val_log_prob_y_zc', log_prob_y_zc, on_step=False, on_epoch=True, add_dataloader_idx=False)
+        self.log('val_kl', kl, on_step=False, on_epoch=True, add_dataloader_idx=False)
+        self.log('val_loss', loss, on_step=False, on_epoch=True, add_dataloader_idx=False)
 
     def init_z(self, x, y_value, e_value):
         batch_size = len(x)
@@ -186,7 +186,8 @@ class VAE(pl.LightningModule):
         log_prob_zc = posterior_causal.log_prob(z_c)
         log_prob_zs = posterior_spurious.log_prob(z_s)
         log_prob_z = log_prob_zc + log_prob_zs
-        return log_prob_x_z, log_prob_y_zc, log_prob_z
+        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc - log_prob_z
+        return loss
 
     def opt_infer_loss(self, x, y_value, e_value):
         batch_size = len(x)
@@ -196,48 +197,27 @@ class VAE(pl.LightningModule):
         optim = AdamW([z_param], lr=self.lr_infer)
         for _ in range(self.n_infer_steps):
             optim.zero_grad()
-            log_prob_x_z, log_prob_y_zc, log_prob_z = self.infer_loss(x, y, e, z_param)
-            loss = -log_prob_x_z - self.y_mult * log_prob_y_zc - log_prob_z
+            loss = self.infer_loss(x, y, e, z_param)
             loss.mean().backward()
             optim.step()
-        return loss.detach().clone(), log_prob_x_z.detach().clone(), log_prob_y_zc.detach().clone(), \
-            log_prob_z.detach().clone()
+        return loss.detach().clone()
 
     def classify(self, x):
         loss_candidates = []
-        log_prob_x_z_candidates = []
-        log_prob_y_zc_candidates = []
-        log_prob_z_candidates = []
         y_candidates = []
         for y_value in range(N_CLASSES):
             for e_value in range(N_ENVS):
-                loss, log_prob_x_z, log_prob_y_zc, log_prob_z = self.opt_infer_loss(x, y_value, e_value)
-                loss_candidates.append(loss.unsqueeze(-1))
-                log_prob_x_z_candidates.append(log_prob_x_z.unsqueeze(-1))
-                log_prob_y_zc_candidates.append(log_prob_y_zc.unsqueeze(-1))
-                log_prob_z_candidates.append(log_prob_z.unsqueeze(-1))
+                loss_candidates.append(self.opt_infer_loss(x, y_value, e_value)[:, None])
                 y_candidates.append(y_value)
-        log_prob_x_z_candidates = torch.hstack(log_prob_x_z_candidates)
-        log_prob_y_zc_candidates = torch.hstack(log_prob_y_zc_candidates)
-        log_prob_z_candidates = torch.hstack(log_prob_z_candidates)
         loss_candidates = torch.hstack(loss_candidates)
         y_candidates = torch.tensor(y_candidates, device=self.device)
-        idxs = loss_candidates.argmin(dim=1)
-        loss = loss_candidates[torch.arange(len(idxs)), idxs].mean()
-        log_prob_x_z = log_prob_x_z_candidates[torch.arange(len(idxs)), idxs].mean()
-        log_prob_y_zc = log_prob_y_zc_candidates[torch.arange(len(idxs)), idxs].mean()
-        log_prob_z = log_prob_z_candidates[torch.arange(len(idxs)), idxs].mean()
-        y_pred = y_candidates[idxs]
-        return loss, log_prob_x_z, log_prob_y_zc, log_prob_z, y_pred
+        y_pred = y_candidates[loss_candidates.argmin(dim=1)]
+        return y_pred
 
     def test_step(self, batch, batch_idx):
         x, y, e, c, s = batch
         with torch.set_grad_enabled(True):
-            loss, log_prob_x_z, log_prob_y_zc, log_prob_z, y_pred = self.classify(x)
-            self.log('test_loss', loss, on_step=False, on_epoch=True)
-            self.log('test_log_prob_x_z', log_prob_x_z, on_step=False, on_epoch=True)
-            self.log('test_log_prob_y_zc', log_prob_y_zc, on_step=False, on_epoch=True)
-            self.log('test_log_prob_z', log_prob_z, on_step=False, on_epoch=True)
+            y_pred = self.classify(x)
             self.test_acc.update(y_pred, y)
 
     def on_test_epoch_end(self):
