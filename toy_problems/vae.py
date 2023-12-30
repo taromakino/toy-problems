@@ -122,6 +122,7 @@ class VAE(pl.LightningModule):
         self.prior = Prior(z_size, rank, init_sd)
         # p(y|z)
         self.classifier = SkipMLP(z_size, h_sizes, 1)
+        self.val_acc = Accuracy('binary')
         self.test_acc = Accuracy('binary')
 
     def sample_z(self, dist):
@@ -163,6 +164,11 @@ class VAE(pl.LightningModule):
         self.log('val_log_prob_y_zc', log_prob_y_zc, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_kl', kl, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_loss', loss, on_step=False, on_epoch=True, add_dataloader_idx=False)
+        y_pred = self.classify(x)
+        self.val_acc.update(y_pred, y)
+
+    def on_validation_epoch_end(self):
+        self.log('val_acc', self.val_acc.compute())
 
     def init_z(self, x, y_value, e_value):
         batch_size = len(x)
