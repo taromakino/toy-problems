@@ -101,8 +101,8 @@ class Prior(nn.Module):
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, z_size, rank, h_sizes, y_mult, beta, dropout_prob, reg_mult, init_sd, lr, weight_decay,
-            lr_infer, n_infer_steps):
+    def __init__(self, task, z_size, rank, h_sizes, y_mult, beta, reg_mult, init_sd, lr, weight_decay, lr_infer,
+            n_infer_steps):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
@@ -121,10 +121,7 @@ class VAE(pl.LightningModule):
         # p(z_c,z_s|y,e)
         self.prior = Prior(z_size, rank, init_sd)
         # p(y|z)
-        self.classifier = nn.Sequential(
-            nn.Dropout(dropout_prob),
-            nn.Linear(z_size, 1)
-        )
+        self.classifier = SkipMLP(z_size, h_sizes, 1)
         self.test_acc = Accuracy('binary')
 
     def sample_z(self, dist):
