@@ -8,47 +8,40 @@ from encoder_cnn import IMG_ENCODE_SIZE, EncoderCNN
 from decoder_cnn import IMG_DECODE_SHAPE, IMG_DECODE_SIZE, DecoderCNN
 from torch.optim import AdamW
 from torchmetrics import Accuracy
-from utils.nn_utils import arr_to_cov
+from utils.nn_utils import SkipMLP, one_hot, arr_to_cov
 
 
 class Encoder(nn.Module):
-    def __init__(self, z_size, rank):
+    def __init__(self, z_size, rank, h_sizes):
         super().__init__()
         self.z_size = z_size
         self.rank = rank
         self.encoder_cnn = EncoderCNN()
-        self.mu_causal = nn.Linear(IMG_ENCODE_SIZE, N_ENVS * z_size)
-        self.low_rank_causal = nn.Linear(IMG_ENCODE_SIZE, N_ENVS * z_size * rank)
-        self.diag_causal = nn.Linear(IMG_ENCODE_SIZE, N_ENVS * z_size)
-        self.mu_spurious = nn.Linear(IMG_ENCODE_SIZE, N_CLASSES * N_ENVS * z_size)
-        self.low_rank_spurious = nn.Linear(IMG_ENCODE_SIZE, N_CLASSES * N_ENVS * z_size * rank)
-        self.diag_spurious = nn.Linear(IMG_ENCODE_SIZE, N_CLASSES * N_ENVS * z_size)
-        
+        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size)
+        self.low_rank_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size * rank)
+        self.diag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size)
+        self.mu_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
+        self.low_rank_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size * rank)
+        self.diag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
+
     def causal_dist(self, x, e):
         batch_size = len(x)
-        mu = self.mu_causal(x)
-        mu = mu.reshape(batch_size, N_ENVS, self.z_size)
-        mu = mu[torch.arange(batch_size), e, :]
-        low_rank = self.low_rank_causal(x)
-        low_rank = low_rank.reshape(batch_size, N_ENVS, self.z_size, self.rank)
-        low_rank = low_rank[torch.arange(batch_size), e, :]
-        diag = self.diag_causal(x)
-        diag = diag.reshape(batch_size, N_ENVS, self.z_size)
-        diag = diag[torch.arange(batch_size), e, :]
+        e_one_hot = one_hot(e, N_ENVS)
+        mu = self.mu_causal(x, e_one_hot)
+        low_rank = self.low_rank_causal(x, e_one_hot)
+        low_rank = low_rank.reshape(batch_size, self.z_size, self.rank)
+        diag = self.diag_causal(x, e_one_hot)
         cov = arr_to_cov(low_rank, diag)
         return D.MultivariateNormal(mu, cov)
-        
+
     def spurious_dist(self, x, y, e):
         batch_size = len(x)
-        mu = self.mu_spurious(x)
-        mu = mu.reshape(batch_size, N_CLASSES, N_ENVS, self.z_size)
-        mu = mu[torch.arange(batch_size), y, e, :]
-        low_rank = self.low_rank_spurious(x)
-        low_rank = low_rank.reshape(batch_size, N_CLASSES, N_ENVS, self.z_size, self.rank)
-        low_rank = low_rank[torch.arange(batch_size), y, e, :]
-        diag = self.diag_spurious(x)
-        diag = diag.reshape(batch_size, N_CLASSES, N_ENVS, self.z_size)
-        diag = diag[torch.arange(batch_size), y, e, :]
+        y_one_hot = one_hot(y, N_CLASSES)
+        e_one_hot = one_hot(e, N_ENVS)
+        mu = self.mu_spurious(x, y_one_hot, e_one_hot)
+        low_rank = self.low_rank_spurious(x, y_one_hot, e_one_hot)
+        low_rank = low_rank.reshape(batch_size, self.z_size, self.rank)
+        diag = self.diag_spurious(x, y_one_hot, e_one_hot)
         cov = arr_to_cov(low_rank, diag)
         return D.MultivariateNormal(mu, cov)
 
@@ -61,14 +54,14 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, z_size):
+    def __init__(self, z_size, h_sizes):
         super().__init__()
-        self.fc = nn.Linear(2 * z_size, IMG_DECODE_SIZE)
+        self.mlp = SkipMLP(2 * z_size, h_sizes, IMG_DECODE_SIZE)
         self.decoder_cnn = DecoderCNN()
 
     def forward(self, x, z):
         batch_size = len(x)
-        x_pred = self.fc(z).view(batch_size, *IMG_DECODE_SHAPE)
+        x_pred = self.mlp(z).view(batch_size, *IMG_DECODE_SHAPE)
         x_pred = self.decoder_cnn(x_pred).view(batch_size, -1)
         return -F.binary_cross_entropy_with_logits(x_pred, x.view(batch_size, -1), reduction='none').sum(dim=1)
 
@@ -108,7 +101,8 @@ class Prior(nn.Module):
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, z_size, rank, y_mult, beta, reg_mult, init_sd, lr, weight_decay, lr_infer, n_infer_steps):
+    def __init__(self, task, z_size, rank, h_sizes, y_mult, beta, reg_mult, init_sd, lr, weight_decay, lr_infer,
+            n_infer_steps):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
@@ -121,13 +115,13 @@ class VAE(pl.LightningModule):
         self.lr_infer = lr_infer
         self.n_infer_steps = n_infer_steps
         # q(z_c,z_s|x)
-        self.encoder = Encoder(z_size, rank)
+        self.encoder = Encoder(z_size, rank, h_sizes)
         # p(x|z_c, z_s)
-        self.decoder = Decoder(z_size)
+        self.decoder = Decoder(z_size, h_sizes)
         # p(z_c,z_s|y,e)
         self.prior = Prior(z_size, rank, init_sd)
         # p(y|z)
-        self.classifier = nn.Linear(z_size, 1)
+        self.classifier = SkipMLP(z_size, h_sizes, 1)
         self.test_acc = Accuracy('binary')
 
     def sample_z(self, dist):
@@ -206,7 +200,8 @@ class VAE(pl.LightningModule):
             loss = -log_prob_x_z - self.y_mult * log_prob_y_zc - log_prob_z
             loss.mean().backward()
             optim.step()
-        return loss.detach(), log_prob_x_z.detach(), log_prob_y_zc.detach(), log_prob_z.detach()
+        return loss.detach().clone(), log_prob_x_z.detach().clone(), log_prob_y_zc.detach().clone(), \
+            log_prob_z.detach().clone()
 
     def classify(self, x):
         loss_candidates = []

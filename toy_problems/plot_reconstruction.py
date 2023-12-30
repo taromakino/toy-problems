@@ -23,7 +23,7 @@ def sample_prior(rng, model):
 
 def reconstruct_x(model, z):
     batch_size = len(z)
-    x_pred = model.decoder.fc(z).reshape(batch_size, *IMG_DECODE_SHAPE)
+    x_pred = model.decoder.mlp(z).reshape(batch_size, *IMG_DECODE_SHAPE)
     x_pred = model.decoder.decoder_cnn(x_pred)
     return torch.sigmoid(x_pred)
 
