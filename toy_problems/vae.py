@@ -164,8 +164,9 @@ class VAE(pl.LightningModule):
         self.log('val_log_prob_y_zc', log_prob_y_zc, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_kl', kl, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_loss', loss, on_step=False, on_epoch=True, add_dataloader_idx=False)
-        y_pred = self.classify(x)
-        self.val_acc.update(y_pred, y)
+        with torch.set_grad_enabled(True):
+            y_pred = self.classify(x)
+            self.val_acc.update(y_pred, y)
 
     def on_validation_epoch_end(self):
         self.log('val_acc', self.val_acc.compute())
