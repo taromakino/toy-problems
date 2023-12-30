@@ -16,10 +16,11 @@ class Encoder(nn.Module):
         super().__init__()
         self.z_size = z_size
         self.rank = rank
-        self.encoder_cnn = EncoderCNN()
+        self.encoder_cnn_causal = EncoderCNN()
         self.mu_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size)
         self.low_rank_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size * rank)
         self.diag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size)
+        self.encoder_cnn_spurious = EncoderCNN()
         self.mu_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
         self.low_rank_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size * rank)
         self.diag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
@@ -27,6 +28,7 @@ class Encoder(nn.Module):
     def causal_dist(self, x, e):
         batch_size = len(x)
         e_one_hot = one_hot(e, N_ENVS)
+        x = self.encoder_cnn_causal(x).view(batch_size, -1)
         mu = self.mu_causal(x, e_one_hot)
         low_rank = self.low_rank_causal(x, e_one_hot)
         low_rank = low_rank.reshape(batch_size, self.z_size, self.rank)
@@ -38,6 +40,7 @@ class Encoder(nn.Module):
         batch_size = len(x)
         y_one_hot = one_hot(y, N_CLASSES)
         e_one_hot = one_hot(e, N_ENVS)
+        x = self.encoder_cnn_spurious(x).view(batch_size, -1)
         mu = self.mu_spurious(x, y_one_hot, e_one_hot)
         low_rank = self.low_rank_spurious(x, y_one_hot, e_one_hot)
         low_rank = low_rank.reshape(batch_size, self.z_size, self.rank)
@@ -46,8 +49,6 @@ class Encoder(nn.Module):
         return D.MultivariateNormal(mu, cov)
 
     def forward(self, x, y, e):
-        batch_size = len(x)
-        x = self.encoder_cnn(x).view(batch_size, -1)
         causal_dist = self.causal_dist(x, e)
         spurious_dist = self.spurious_dist(x, y, e)
         return causal_dist, spurious_dist
