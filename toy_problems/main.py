@@ -32,7 +32,7 @@ def make_model(args, task, eval_stage):
     is_train = eval_stage is None
     if task == Task.ERM:
         if is_train:
-            return ERM(args.lr, args.weight_decay)
+            return ERM(args.z_size, args.lr, args.weight_decay)
         else:
             return ERM.load_from_checkpoint(ckpt_fpath(args, task))
     elif task == Task.VAE:
@@ -103,7 +103,7 @@ if __name__ == '__main__':
     parser.add_argument('--eval_stage', type=EvalStage, choices=list(EvalStage))
     parser.add_argument('--train_ratio', type=float, default=0.9)
     parser.add_argument('--batch_size', type=int, default=256)
-    parser.add_argument('--eval_batch_size', type=int, default=1024)
+    parser.add_argument('--eval_batch_size', type=int, default=2048)
     parser.add_argument('--n_workers', type=int, default=8)
     parser.add_argument('--z_size', type=int, default=32)
     parser.add_argument('--rank', type=int, default=32)
