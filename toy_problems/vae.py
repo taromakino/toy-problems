@@ -159,10 +159,10 @@ class VAE(pl.LightningModule):
         x, y, e, c, s = batch
         log_prob_x_z, log_prob_y_zc, kl, prior_norm = self.loss(x, y, e)
         loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.reg_mult * prior_norm
-        self.log('val_loss', loss, on_step=False, on_epoch=True, add_dataloader_idx=False)
-        self.log('val_log_prob_x_z', log_prob_x_z, on_step=False, on_epoch=True, add_dataloader_idx=False)
-        self.log('val_log_prob_y_zc', log_prob_y_zc, on_step=False, on_epoch=True, add_dataloader_idx=False)
-        self.log('val_kl', kl, on_step=False, on_epoch=True, add_dataloader_idx=False)
+        self.log('val_loss', loss, on_step=False, on_epoch=True)
+        self.log('val_log_prob_x_z', log_prob_x_z, on_step=False, on_epoch=True)
+        self.log('val_log_prob_y_zc', log_prob_y_zc, on_step=False, on_epoch=True)
+        self.log('val_kl', kl, on_step=False, on_epoch=True)
 
     def init_z(self, x, y_value, e_value):
         batch_size = len(x)
@@ -200,7 +200,8 @@ class VAE(pl.LightningModule):
             loss = -log_prob_x_z - self.y_mult * log_prob_y_zc - log_prob_z
             loss.mean().backward()
             optim.step()
-        return loss.detach(), log_prob_x_z.detach(), log_prob_y_zc.detach(), log_prob_z.detach()
+        return loss.detach().clone(), log_prob_x_z.detach().clone(), log_prob_y_zc.detach().clone(), \
+            log_prob_z.detach().clone()
 
     def classify(self, x):
         loss_candidates = []
