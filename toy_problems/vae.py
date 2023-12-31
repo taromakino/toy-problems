@@ -148,25 +148,23 @@ class VAE(pl.LightningModule):
         kl_spurious = D.kl_divergence(posterior_spurious, prior_spurious).mean()
         kl = kl_causal + kl_spurious
         prior_norm = (torch.hstack((prior_causal.loc, prior_spurious.loc)) ** 2).mean()
-        return log_prob_x_z, log_prob_y_zc, kl, prior_norm
+        return log_prob_x_z, log_prob_y_zc, kl, prior_norm, y_pred
 
     def training_step(self, batch, batch_idx):
         x, y, e, c, s = batch
-        log_prob_x_z, log_prob_y_zc, kl, prior_norm = self.loss(x, y, e)
+        log_prob_x_z, log_prob_y_zc, kl, prior_norm, y_pred = self.loss(x, y, e)
         loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.reg_mult * prior_norm
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y, e, c, s = batch
-        log_prob_x_z, log_prob_y_zc, kl, prior_norm = self.loss(x, y, e)
+        log_prob_x_z, log_prob_y_zc, kl, prior_norm, y_pred = self.loss(x, y, e)
         loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.reg_mult * prior_norm
         self.log('val_log_prob_x_z', log_prob_x_z, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_log_prob_y_zc', log_prob_y_zc, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_kl', kl, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_loss', loss, on_step=False, on_epoch=True, add_dataloader_idx=False)
-        with torch.set_grad_enabled(True):
-            y_pred = self.classify(x)
-            self.val_acc.update(y_pred, y)
+        self.val_acc.update(y_pred, y)
 
     def on_validation_epoch_end(self):
         self.log('val_acc', self.val_acc.compute())
