@@ -9,7 +9,7 @@ RNG = np.random.RandomState(0)
 PROB_ZERO_E0 = 0.25
 N_TRAINVAL = 10000
 N_TEST = 2000
-WIDTH_SMALL = 4
+WIDTH_SMALL = 6
 WIDTH_LARGE = 12
 IMAGE_SIZE = 28
 
@@ -40,9 +40,9 @@ def make_trainval_data():
     colors = np.full(N_TRAINVAL, np.nan)
     idxs_y0_e1 = np.where((y == 0) & (e == 1))[0]
     idxs_y1_e1 = np.where((y == 1) & (e == 1))[0]
-    colors[idxs_env0] = 0.25
-    colors[idxs_y0_e1] = RNG.normal(0.5, 0.05, len(idxs_y0_e1))
-    colors[idxs_y1_e1] = RNG.normal(0.75, 0.05, len(idxs_y1_e1))
+    colors[idxs_env0] = 0.5
+    colors[idxs_y0_e1] = RNG.normal(0.25, 0.1, len(idxs_y0_e1))
+    colors[idxs_y1_e1] = RNG.normal(0.75, 0.1, len(idxs_y1_e1))
     colors = np.clip(colors, 0, 1)[:, None, None]
 
     center_x = RNG.randint(WIDTH_LARGE // 2, IMAGE_SIZE - WIDTH_LARGE // 2 + 1, N_TRAINVAL)
