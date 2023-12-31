@@ -7,7 +7,7 @@ from typing import Tuple
 from torchvision.models.densenet import _DenseBlock, _Transition
 
 
-IMG_ENCODE_SHAPE = (48, 7, 7)
+IMG_ENCODE_SHAPE = (192, 3, 3)
 IMG_ENCODE_SIZE = np.prod(IMG_ENCODE_SHAPE)
 
 
