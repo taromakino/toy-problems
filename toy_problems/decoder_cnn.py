@@ -5,25 +5,25 @@ from typing import Tuple
 from torchvision.models.densenet import _DenseBlock
 
 
-IMG_DECODE_SHAPE = (24, 7, 7)
+IMG_DECODE_SHAPE = (96, 3, 3)
 IMG_DECODE_SIZE = np.prod(IMG_DECODE_SHAPE)
 
 
 class _Transition(nn.Sequential):
-    def __init__(self, num_input_features: int, num_output_features: int) -> None:
+    def __init__(self, num_input_features: int, num_output_features: int, output_padding: int) -> None:
         super().__init__()
         self.norm = nn.BatchNorm2d(num_input_features)
         self.relu = nn.ReLU(inplace=True)
         self.conv = nn.Conv2d(num_input_features, num_output_features, kernel_size=1, stride=1, bias=False)
-        self.pool = nn.ConvTranspose2d(num_output_features, num_output_features, 2, stride=2)
+        self.pool = nn.ConvTranspose2d(num_output_features, num_output_features, 2, stride=2, output_padding=output_padding)
 
 
 class DecoderCNN(nn.Module):
     def __init__(
         self,
-        growth_rate: int = 8,
-        block_config: Tuple[int, int, int, int] = (3, 3, 3),
-        num_init_features: int = 24,
+        growth_rate: int = 32,
+        block_config: Tuple[int, int, int, int] = (3, 3, 3, 3),
+        num_init_features: int = 96,
         bn_size: int = 4,
         drop_rate: float = 0,
         memory_efficient: bool = False,
@@ -46,7 +46,9 @@ class DecoderCNN(nn.Module):
             self.features.add_module("denseblock%d" % (i + 1), block)
             num_features = num_features + num_layers * growth_rate
             if i != len(block_config) - 1:
-                trans = _Transition(num_input_features=num_features, num_output_features=num_features // 2)
+                output_padding = 1 if i == 0 else 0
+                trans = _Transition(num_input_features=num_features, num_output_features=num_features // 2,
+                    output_padding=output_padding)
                 self.features.add_module("transition%d" % (i + 1), trans)
                 num_features = num_features // 2
 

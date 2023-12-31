@@ -14,9 +14,9 @@ IMG_ENCODE_SIZE = np.prod(IMG_ENCODE_SHAPE)
 class EncoderCNN(nn.Module):
     def __init__(
         self,
-        growth_rate: int = 8,
-        block_config: Tuple[int, int, int, int] = (3, 3, 3),
-        num_init_features: int = 24,
+        growth_rate: int = 32,
+        block_config: Tuple[int, int, int, int] = (3, 3, 3, 3),
+        num_init_features: int = 96,
         bn_size: int = 4,
         drop_rate: float = 0,
         memory_efficient: bool = False,
