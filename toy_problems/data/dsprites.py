@@ -38,14 +38,11 @@ def make_trainval_data():
     e[idxs_env1] = 1
 
     colors = np.full(N_TRAINVAL, np.nan)
-    idxs_y0_e0 = np.where((y == 0) & (e == 0))[0]
-    idxs_y1_e0 = np.where((y == 1) & (e == 0))[0]
     idxs_y0_e1 = np.where((y == 0) & (e == 1))[0]
     idxs_y1_e1 = np.where((y == 1) & (e == 1))[0]
-    colors[idxs_y0_e0] = RNG.normal(0.2, 0.1, len(idxs_y0_e0))
-    colors[idxs_y1_e0] = RNG.normal(0.6, 0.1, len(idxs_y1_e0))
-    colors[idxs_y0_e1] = RNG.normal(0.8, 0.1, len(idxs_y0_e1))
-    colors[idxs_y1_e1] = RNG.normal(0.4, 0.1, len(idxs_y1_e1))
+    colors[idxs_env0] = 0.25
+    colors[idxs_y0_e1] = RNG.normal(0.5, 0.05, len(idxs_y0_e1))
+    colors[idxs_y1_e1] = RNG.normal(0.75, 0.05, len(idxs_y1_e1))
     colors = np.clip(colors, 0, 1)[:, None, None]
 
     center_x = RNG.randint(WIDTH_LARGE // 2, IMAGE_SIZE - WIDTH_LARGE // 2 + 1, N_TRAINVAL)
