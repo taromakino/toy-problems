@@ -1,4 +1,5 @@
 import torch
+import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
@@ -46,3 +47,22 @@ def one_hot(categorical, n_categories):
 def arr_to_cov(low_rank, diag):
     return torch.bmm(low_rank, low_rank.transpose(1, 2)) + torch.diag_embed(F.softplus(diag) + torch.full_like(diag,
         EPSILON))
+
+
+def to_joint_dist(dist_x, dist_y):
+    mu_x, mu_y = dist_x.loc, dist_y.loc
+    batch_size, dim_x = mu_x.shape
+    _, dim_y = mu_y.shape
+    mu_xy = torch.hstack((mu_x, mu_y))
+    cov_xy = torch.zeros(batch_size, dim_x + dim_y, dim_x + dim_y, device=mu_x.device)
+    cov_xy[:, :dim_x, :dim_x] = dist_x.covariance_matrix
+    cov_xy[:, dim_x:, dim_x:] = dist_y.covariance_matrix
+    return D.MultivariateNormal(mu_xy, cov_xy)
+
+
+def mutual_info(dist_x, dist_y):
+    entropy_x = dist_x.entropy()
+    entropy_y = dist_y.entropy()
+    dist_xy = to_joint_dist(dist_x, dist_y)
+    entropy_xy = dist_xy.entropy()
+    return entropy_x + entropy_y - entropy_xy
