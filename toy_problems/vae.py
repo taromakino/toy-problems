@@ -17,19 +17,20 @@ class Encoder(nn.Module):
         self.z_size = z_size
         self.rank = rank
         self.encoder_cnn = EncoderCNN()
-        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size)
-        self.low_rank_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size * rank)
-        self.diag_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size)
+        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size)
+        self.low_rank_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size * rank)
+        self.diag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size)
         self.mu_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
         self.low_rank_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size * rank)
         self.diag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
 
-    def causal_dist(self, x):
+    def causal_dist(self, x, e):
         batch_size = len(x)
-        mu = self.mu_causal(x)
-        low_rank = self.low_rank_causal(x)
+        e_one_hot = one_hot(e, N_ENVS)
+        mu = self.mu_causal(x, e_one_hot)
+        low_rank = self.low_rank_causal(x, e_one_hot)
         low_rank = low_rank.reshape(batch_size, self.z_size, self.rank)
-        diag = self.diag_causal(x)
+        diag = self.diag_causal(x, e_one_hot)
         cov = arr_to_cov(low_rank, diag)
         return D.MultivariateNormal(mu, cov)
 
@@ -47,7 +48,7 @@ class Encoder(nn.Module):
     def forward(self, x, y, e):
         batch_size = len(x)
         x = self.encoder_cnn(x).view(batch_size, -1)
-        causal_dist = self.causal_dist(x)
+        causal_dist = self.causal_dist(x, e)
         spurious_dist = self.spurious_dist(x, y, e)
         return causal_dist, spurious_dist
 
@@ -100,15 +101,16 @@ class Prior(nn.Module):
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, z_size, rank, h_sizes, y_mult, beta, reg_mult, init_sd, lr, weight_decay, lr_infer,
-            n_infer_steps):
+    def __init__(self, task, z_size, rank, h_sizes, y_mult, beta, prior_reg_mult, orthogonal_reg_mult, init_sd, lr,
+            weight_decay, lr_infer, n_infer_steps):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
         self.z_size = z_size
         self.y_mult = y_mult
         self.beta = beta
-        self.reg_mult = reg_mult
+        self.prior_reg_mult = prior_reg_mult
+        self.orthogonal_reg_mult = orthogonal_reg_mult
         self.lr = lr
         self.weight_decay = weight_decay
         self.lr_infer = lr_infer
@@ -146,19 +148,21 @@ class VAE(pl.LightningModule):
         kl_causal = D.kl_divergence(posterior_causal, prior_causal).mean()
         kl_spurious = D.kl_divergence(posterior_spurious, prior_spurious).mean()
         kl = kl_causal + kl_spurious
-        prior_norm = (torch.hstack((prior_causal.loc, prior_spurious.loc)) ** 2).mean()
-        return log_prob_x_z, log_prob_y_zc, kl, prior_norm, y_pred
+        prior_reg = (torch.hstack((prior_causal.loc, prior_spurious.loc)) ** 2).mean()
+        orthogonal_reg = (z_c * z_s).sum(dim=1).mean()
+        return log_prob_x_z, log_prob_y_zc, kl, prior_reg, orthogonal_reg, y_pred
 
     def training_step(self, batch, batch_idx):
         x, y, e, c, s = batch
-        log_prob_x_z, log_prob_y_zc, kl, prior_norm, y_pred = self.loss(x, y, e)
-        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.reg_mult * prior_norm
+        log_prob_x_z, log_prob_y_zc, kl, prior_norm, orthogonal_reg, y_pred = self.loss(x, y, e)
+        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.prior_reg_mult * prior_norm + \
+               self.orthogonal_reg_mult * orthogonal_reg
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y, e, c, s = batch
         log_prob_x_z, log_prob_y_zc, kl, prior_norm, y_pred = self.loss(x, y, e)
-        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.reg_mult * prior_norm
+        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.prior_reg_mult * prior_norm
         self.log('val_log_prob_x_z', log_prob_x_z, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_log_prob_y_zc', log_prob_y_zc, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_kl', kl, on_step=False, on_epoch=True, add_dataloader_idx=False)
