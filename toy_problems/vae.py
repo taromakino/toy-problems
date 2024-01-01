@@ -149,7 +149,7 @@ class VAE(pl.LightningModule):
         kl_spurious = D.kl_divergence(posterior_spurious, prior_spurious).mean()
         kl = kl_causal + kl_spurious
         prior_reg = (torch.hstack((prior_causal.loc, prior_spurious.loc)) ** 2).mean()
-        orthogonal_reg = (z_c * z_s).sum(dim=1).mean()
+        orthogonal_reg = (z_c * z_s).sum(dim=1).abs().mean()
         return log_prob_x_z, log_prob_y_zc, kl, prior_reg, orthogonal_reg, y_pred
 
     def training_step(self, batch, batch_idx):
