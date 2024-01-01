@@ -156,13 +156,14 @@ class VAE(pl.LightningModule):
         x, y, e, c, s = batch
         log_prob_x_z, log_prob_y_zc, kl, prior_norm, orthogonal_reg, y_pred = self.loss(x, y, e)
         loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.prior_reg_mult * prior_norm + \
-               self.orthogonal_reg_mult * orthogonal_reg
+            self.orthogonal_reg_mult * orthogonal_reg
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y, e, c, s = batch
-        log_prob_x_z, log_prob_y_zc, kl, prior_norm, y_pred = self.loss(x, y, e)
-        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.prior_reg_mult * prior_norm
+        log_prob_x_z, log_prob_y_zc, kl, prior_norm, orthogonal_reg, y_pred = self.loss(x, y, e)
+        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.prior_reg_mult * prior_norm + \
+            self.orthogonal_reg_mult * orthogonal_reg
         self.log('val_log_prob_x_z', log_prob_x_z, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_log_prob_y_zc', log_prob_y_zc, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_kl', kl, on_step=False, on_epoch=True, add_dataloader_idx=False)
