@@ -167,6 +167,7 @@ class VAE(pl.LightningModule):
         self.log('val_log_prob_x_z', log_prob_x_z, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_log_prob_y_zc', log_prob_y_zc, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_kl', kl, on_step=False, on_epoch=True, add_dataloader_idx=False)
+        self.log('val_orthogonal_reg', orthogonal_reg, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_loss', loss, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.val_acc.update(y_pred, y)
 
