@@ -4,9 +4,6 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
 
-EPSILON = 1e-5
-
-
 class SkipLinear(nn.Module):
     def __init__(self, input_size, output_size):
         super().__init__()
@@ -43,6 +40,5 @@ def one_hot(categorical, n_categories):
     return out
 
 
-def arr_to_cov(low_rank, diag):
-    return torch.bmm(low_rank, low_rank.transpose(1, 2)) + torch.diag_embed(F.softplus(diag) + torch.full_like(diag,
-        EPSILON))
+def to_gram(x):
+    return torch.bmm(x, x.transpose(1, 2))
