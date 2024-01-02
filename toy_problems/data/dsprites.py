@@ -41,8 +41,8 @@ def make_trainval_data():
     idxs_y0_e1 = np.where((y == 0) & (e == 1))[0]
     idxs_y1_e1 = np.where((y == 1) & (e == 1))[0]
     colors[idxs_env0] = 0.5
-    colors[idxs_y0_e1] = RNG.normal(0.25, 0.1, len(idxs_y0_e1))
-    colors[idxs_y1_e1] = RNG.normal(0.75, 0.1, len(idxs_y1_e1))
+    colors[idxs_y0_e1] = 0.25
+    colors[idxs_y1_e1] = 0.75
     colors = np.clip(colors, 0, 1)[:, None, None]
 
     center_x = RNG.randint(WIDTH_LARGE // 2, IMAGE_SIZE - WIDTH_LARGE // 2 + 1, N_TRAINVAL)
