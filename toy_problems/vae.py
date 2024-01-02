@@ -8,7 +8,7 @@ from encoder_cnn import IMG_ENCODE_SIZE, EncoderCNN
 from decoder_cnn import IMG_DECODE_SHAPE, IMG_DECODE_SIZE, DecoderCNN
 from torch.optim import AdamW
 from torchmetrics import Accuracy
-from utils.nn_utils import SkipMLP, one_hot, arr_to_cov, mutual_info
+from utils.nn_utils import SkipMLP, one_hot, arr_to_cov
 
 
 class Encoder(nn.Module):
@@ -101,8 +101,8 @@ class Prior(nn.Module):
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, z_size, rank, h_sizes, y_mult, beta, prior_reg_mult, mi_reg_mult, init_sd, lr, weight_decay,
-            lr_infer, n_infer_steps):
+    def __init__(self, task, z_size, rank, h_sizes, y_mult, beta, prior_reg_mult, init_sd, lr, weight_decay, lr_infer,
+            n_infer_steps):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
@@ -110,7 +110,6 @@ class VAE(pl.LightningModule):
         self.y_mult = y_mult
         self.beta = beta
         self.prior_reg_mult = prior_reg_mult
-        self.mi_reg_mult = mi_reg_mult
         self.lr = lr
         self.weight_decay = weight_decay
         self.lr_infer = lr_infer
@@ -149,25 +148,21 @@ class VAE(pl.LightningModule):
         kl_spurious = D.kl_divergence(posterior_spurious, prior_spurious).mean()
         kl = kl_causal + kl_spurious
         prior_reg = (torch.hstack((prior_causal.loc, prior_spurious.loc)) ** 2).mean()
-        mi_reg = mutual_info(posterior_causal, posterior_spurious).mean()
-        return log_prob_x_z, log_prob_y_zc, kl, prior_reg, mi_reg, y_pred
+        return log_prob_x_z, log_prob_y_zc, kl, prior_reg, y_pred
 
     def training_step(self, batch, batch_idx):
         x, y, e, c, s = batch
-        log_prob_x_z, log_prob_y_zc, kl, prior_reg, mi_reg, y_pred = self.loss(x, y, e)
-        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.prior_reg_mult * prior_reg + \
-            self.mi_reg_mult * mi_reg
+        log_prob_x_z, log_prob_y_zc, kl, prior_reg, y_pred = self.loss(x, y, e)
+        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.prior_reg_mult * prior_reg
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y, e, c, s = batch
-        log_prob_x_z, log_prob_y_zc, kl, prior_reg, mi_reg, y_pred = self.loss(x, y, e)
-        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.prior_reg_mult * prior_reg + \
-            self.mi_reg_mult * mi_reg
+        log_prob_x_z, log_prob_y_zc, kl, prior_reg, y_pred = self.loss(x, y, e)
+        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.prior_reg_mult * prior_reg
         self.log('val_log_prob_x_z', log_prob_x_z, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_log_prob_y_zc', log_prob_y_zc, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_kl', kl, on_step=False, on_epoch=True, add_dataloader_idx=False)
-        self.log('val_mi_reg', mi_reg, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.log('val_loss', loss, on_step=False, on_epoch=True, add_dataloader_idx=False)
         self.val_acc.update(y_pred, y)
 
