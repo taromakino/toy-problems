@@ -162,21 +162,20 @@ class VAE(pl.LightningModule):
     def on_validation_epoch_end(self):
         self.log('val_acc', self.val_acc.compute())
 
-    def init_z(self, x, y_value, e_value):
+    def make_z_param(self, x, y_value, e_value):
         batch_size = len(x)
         y = torch.full((batch_size,), y_value, dtype=torch.long, device=self.device)
         e = torch.full((batch_size,), e_value, dtype=torch.long, device=self.device)
         posterior_causal, posterior_spurious = self.encoder(x, y, e)
         z_c = posterior_causal.loc
         z_s = posterior_spurious.loc
-        z = torch.hstack((z_c, z_s))
-        return nn.Parameter(z.detach())
+        return nn.Parameter(z_c.detach()), nn.Parameter(z_s.detach())
 
-    def infer_loss(self, x, y, e, z):
+    def infer_loss(self, x, y, e, z_c, z_s):
         # log p(x|z_c,z_s)
+        z = torch.hstack((z_c, z_s))
         log_prob_x_z = self.decoder(x, z)
         # log p(y|z_c)
-        z_c, z_s = torch.chunk(z, 2, dim=1)
         y_pred = self.classifier(z_c).view(-1)
         log_prob_y_zc = -F.binary_cross_entropy_with_logits(y_pred, y.float(), reduction='none')
         # log q(z_c,z_s|x,y,e)
@@ -189,13 +188,13 @@ class VAE(pl.LightningModule):
 
     def opt_infer_loss(self, x, y_value, e_value):
         batch_size = len(x)
-        z_param = self.init_z(x, y_value, e_value)
+        zc_param, zs_param = self.make_z_param(x, y_value, e_value)
         y = torch.full((batch_size,), y_value, dtype=torch.long, device=self.device)
         e = torch.full((batch_size,), e_value, dtype=torch.long, device=self.device)
-        optim = AdamW([z_param], lr=self.lr_infer)
+        optim = AdamW([zc_param, zs_param], lr=self.lr_infer)
         for _ in range(self.n_infer_steps):
             optim.zero_grad()
-            loss = self.infer_loss(x, y, e, z_param)
+            loss = self.infer_loss(x, y, e, zc_param, zs_param)
             loss.mean().backward()
             optim.step()
         return loss.detach().clone()
