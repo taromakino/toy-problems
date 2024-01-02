@@ -37,8 +37,9 @@ def main(args):
     model.eval()
     x, y, e, c, s = dataloader.dataset[:]
     for example_idx in range(N_EXAMPLES):
-        x_seed = x[[example_idx]].to(model.device)
-        causal_dist, spurious_dist = model.encoder(x_seed)
+        x_seed, y_seed, e_seed = x[[example_idx]], y[[example_idx]], e[[example_idx]]
+        x_seed, y_seed, e_seed = x_seed.to(model.device), y_seed.to(model.device), e_seed.to(model.device)
+        causal_dist, spurious_dist = model.encoder(x_seed, y_seed, e_seed)
         zc_seed, zs_seed = causal_dist.loc, spurious_dist.loc
         z_seed = torch.hstack((zc_seed, zs_seed))
         fig, axes = plt.subplots(2, N_COLS, figsize=(2 * N_COLS, 2 * 2))
