@@ -16,9 +16,8 @@ N_COLS = 10
 def sample_prior(rng, model):
     y = torch.tensor(rng.choice(N_CLASSES), dtype=torch.long, device=model.device)[None]
     e = torch.tensor(rng.choice(N_ENVS), dtype=torch.long, device=model.device)[None]
-    prior_dist = model.prior(y, e)
-    z_sample = prior_dist.sample()
-    zc_sample, zs_sample = torch.chunk(z_sample, 2, dim=1)
+    causal_dist, spurious_dist = model.prior(y, e)
+    zc_sample, zs_sample = causal_dist.sample(), spurious_dist.sample()
     return zc_sample, zs_sample
 
 
@@ -40,9 +39,9 @@ def main(args):
     for example_idx in range(N_EXAMPLES):
         x_seed, y_seed, e_seed = x[[example_idx]], y[[example_idx]], e[[example_idx]]
         x_seed, y_seed, e_seed = x_seed.to(model.device), y_seed.to(model.device), e_seed.to(model.device)
-        posterior_dist = model.encoder(x_seed, y_seed, e_seed)
-        z_seed = posterior_dist.loc
-        zc_seed, zs_seed = torch.chunk(z_seed, 2, dim=1)
+        causal_dist, spurious_dist = model.encoder(x_seed, y_seed, e_seed)
+        zc_seed, zs_seed = causal_dist.loc, spurious_dist.loc
+        z_seed = torch.hstack((zc_seed, zs_seed))
         fig, axes = plt.subplots(2, N_COLS, figsize=(2 * N_COLS, 2 * 2))
         for ax in axes.flatten():
             ax.set_xticks([])

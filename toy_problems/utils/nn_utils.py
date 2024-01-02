@@ -47,12 +47,3 @@ def one_hot(categorical, n_categories):
 def arr_to_cov(low_rank, diag):
     return torch.bmm(low_rank, low_rank.transpose(1, 2)) + torch.diag_embed(F.softplus(diag) + torch.full_like(diag,
         EPSILON))
-
-
-def batch_block_diag(cov_lhs, cov_rhs):
-    batch_size, dim_lhs, dim_lhs = cov_lhs.shape
-    batch_size, dim_rhs, dim_rhs = cov_rhs.shape
-    cov = torch.zeros(batch_size, dim_lhs + dim_rhs, dim_lhs + dim_rhs, device=cov_lhs.device)
-    cov[:, :dim_lhs, :dim_lhs] = cov_lhs
-    cov[:, dim_lhs:, dim_lhs:] = cov_rhs
-    return cov
