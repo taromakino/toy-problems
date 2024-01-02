@@ -129,7 +129,7 @@ class VAE(pl.LightningModule):
         mu, scale_tril = dist.loc, dist.scale_tril
         batch_size, z_size = mu.shape
         epsilon = torch.randn(batch_size, z_size, 1).to(self.device)
-        return mu + torch.bmm(scale_tril, epsilon).squeeze()
+        return mu + torch.bmm(scale_tril, epsilon).squeeze(-1)
 
     def loss(self, x, y, e):
         # z_c,z_s ~ q(z_c,z_s|x)
