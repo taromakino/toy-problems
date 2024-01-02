@@ -144,11 +144,8 @@ class VAE(pl.LightningModule):
         batch_size = len(x)
         y = torch.full((batch_size,), y_value, dtype=torch.long, device=self.device)
         e = torch.full((batch_size,), e_value, dtype=torch.long, device=self.device)
-        posterior_causal, posterior_spurious = self.encoder(x, y, e)
-        z_c = posterior_causal.loc
-        z_s = posterior_spurious.loc
-        z = torch.hstack((z_c, z_s))
-        return nn.Parameter(z.detach())
+        posterior_dist = self.encoder(x, y, e)
+        return nn.Parameter(posterior_dist.loc.detach())
 
     def infer_loss(self, x, y, e, z):
         # log p(x|z_c,z_s)
@@ -158,10 +155,8 @@ class VAE(pl.LightningModule):
         y_pred = self.classifier(z_c).view(-1)
         log_prob_y_zc = -F.binary_cross_entropy_with_logits(y_pred, y.float(), reduction='none')
         # log q(z_c,z_s|x,y,e)
-        posterior_causal, posterior_spurious = self.encoder(x, y, e)
-        log_prob_zc = posterior_causal.log_prob(z_c)
-        log_prob_zs = posterior_spurious.log_prob(z_s)
-        log_prob_z = log_prob_zc + log_prob_zs
+        posterior_dist = self.encoder(x, y, e)
+        log_prob_z = posterior_dist.log_prob(z)
         loss = -log_prob_x_z - self.y_mult * log_prob_y_zc - log_prob_z
         return loss
 
