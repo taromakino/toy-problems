@@ -151,7 +151,7 @@ class VAE(pl.LightningModule):
         return log_prob_x_z, log_prob_y_zc, kl, prior_reg, y_pred
 
     def kl_mult(self):
-        return max(1.0, self.current_epoch / int(self.trainer.max_epochs * self.kl_anneal_ratio))
+        return min(1.0, self.current_epoch / int(self.trainer.max_epochs * self.kl_anneal_ratio))
 
     def training_step(self, batch, batch_idx):
         x, y, e, c, s = batch
