@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from utils.nn_utils import make_dataloader
-from utils.plot import hist_discrete
 
 
 RNG = np.random.RandomState(0)
@@ -119,12 +118,7 @@ def make_data(train_ratio, batch_size, eval_batch_size):
 
 def main():
     x, y, e, c, s = make_trainval_data()
-    scale = c
     color = s
-    fig, ax = plt.subplots(1, 1, figsize=(6, 3))
-    hist_discrete(ax, scale)
-    ax.set_title('p(scale)')
-    fig.tight_layout()
     fig, ax = plt.subplots(1, 1, figsize=(6, 3))
     ax.hist(color, bins='auto')
     ax.set_title('p(color)')
@@ -134,8 +128,8 @@ def main():
     axes[0].hist(color[(y == 1) & (e == 0)], bins='auto', alpha=0.5, color='blue')
     axes[1].hist(color[(y == 0) & (e == 1)], bins='auto', alpha=0.5, color='red')
     axes[1].hist(color[(y == 1) & (e == 1)], bins='auto', alpha=0.5, color='blue')
-    axes[0].set_title('p(color|y,e=0)')
-    axes[1].set_title('p(color|y,e=1)')
+    axes[0].set_title('p(color | e=0)')
+    axes[1].set_title('p(color | e=1)')
     fig.tight_layout()
     plt.show(block=True)
 
