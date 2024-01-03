@@ -40,10 +40,14 @@ def one_hot(categorical, n_categories):
     return out
 
 
+def repeat_batch(x, batch_size):
+    return x.unsqueeze(0).repeat_interleave(batch_size, dim=0)
+
+
 def to_cov(x):
     batch_size, dim, dim = x.shape
     x = torch.bmm(x, x.transpose(1, 2))
     diag_mask = torch.eye(dim, dtype=torch.bool)
-    diag_mask = diag_mask.unsqueeze(0).repeat_interleave(batch_size, dim=0)
+    diag_mask = repeat_batch(diag_mask, batch_size)
     x[diag_mask] = F.softplus(x[diag_mask])
     return x
