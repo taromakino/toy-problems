@@ -4,6 +4,9 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
 
+EPSILON = 1e-5
+
+
 class SkipLinear(nn.Module):
     def __init__(self, input_size, output_size):
         super().__init__()
@@ -44,10 +47,6 @@ def repeat_batch(x, batch_size):
     return x.unsqueeze(0).repeat_interleave(batch_size, dim=0)
 
 
-def to_cov(x):
-    batch_size, dim, dim = x.shape
-    x = torch.bmm(x, x.transpose(1, 2))
-    diag_mask = torch.eye(dim, dtype=torch.bool)
-    diag_mask = repeat_batch(diag_mask, batch_size)
-    x[diag_mask] = F.softplus(x[diag_mask])
-    return x
+def arr_to_cov(low_rank, diag):
+    return torch.bmm(low_rank, low_rank.transpose(1, 2)) + torch.diag_embed(F.softplus(diag) + torch.full_like(diag,
+        EPSILON))
