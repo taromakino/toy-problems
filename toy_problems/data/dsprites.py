@@ -60,6 +60,7 @@ def make_trainval_data():
     x[:, 0, :, :] *= colors
     x[:, 1, :, :] *= (1 - colors)
     x = torch.tensor(x, dtype=torch.float32)
+    x[idxs_env0, :, 0, 0] = 1
 
     y = torch.tensor(y, dtype=torch.long)
     e = torch.tensor(e, dtype=torch.long)
