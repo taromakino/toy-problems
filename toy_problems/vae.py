@@ -8,7 +8,7 @@ from encoder_cnn import IMG_ENCODE_SIZE, EncoderCNN
 from decoder_cnn import IMG_DECODE_SHAPE, IMG_DECODE_SIZE, DecoderCNN
 from torch.optim import AdamW
 from torchmetrics import Accuracy
-from utils.nn_utils import SkipMLP, one_hot, repeat_batch, to_gram
+from utils.nn_utils import SkipMLP, one_hot, repeat_batch, to_cov
 
 
 class Encoder(nn.Module):
@@ -29,7 +29,7 @@ class Encoder(nn.Module):
         mu = self.mu_causal(x)
         cov = self.cov_causal(x)
         cov = cov.reshape(batch_size, self.causal_size, self.causal_size)
-        cov = to_gram(cov)
+        cov = to_cov(cov)
         return D.MultivariateNormal(mu, cov)
 
     def spurious_dist(self, x, y, e):
@@ -40,7 +40,7 @@ class Encoder(nn.Module):
         mu = self.mu_spurious(x, y_one_hot, e_one_hot)
         cov = self.cov_spurious(x, y_one_hot, e_one_hot)
         cov = cov.reshape(batch_size, self.spurious_size, self.spurious_size)
-        cov = to_gram(cov)
+        cov = to_cov(cov)
         return D.MultivariateNormal(mu, cov)
 
     def forward(self, x, y, e):
@@ -79,12 +79,12 @@ class Prior(nn.Module):
 
     def causal_dist(self, batch_size):
         mu = repeat_batch(self.mu_causal, batch_size)
-        cov = to_gram(repeat_batch(self.cov_causal, batch_size))
+        cov = to_cov(repeat_batch(self.cov_causal, batch_size))
         return D.MultivariateNormal(mu, cov)
 
     def spurious_dist(self, y, e):
         mu = self.mu_spurious[y, e]
-        cov = to_gram(self.cov_spurious[y, e])
+        cov = to_cov(self.cov_spurious[y, e])
         return D.MultivariateNormal(mu, cov)
 
     def forward(self, y, e):
