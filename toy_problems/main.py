@@ -38,7 +38,7 @@ def make_model(args, task, eval_stage):
             return ERM.load_from_checkpoint(ckpt_fpath(args, task))
     elif task == Task.VAE:
         return VAE(task, args.causal_size, args.spurious_size, args.h_sizes, args.y_mult, args.beta, args.prior_reg_mult,
-            args.init_sd, args.lr, args.weight_decay, args.n_sched_epochs, args.sched_mult, args.lr_infer, args.n_infer_steps)
+            args.init_sd, args.lr, args.weight_decay, args.lr_infer, args.n_infer_steps)
     else:
         assert task == Task.CLASSIFY
         return VAE.load_from_checkpoint(ckpt_fpath(args, Task.VAE), task=task)
@@ -116,9 +116,7 @@ if __name__ == '__main__':
     parser.add_argument('--init_sd', type=float, default=1e-3)
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--weight_decay', type=float, default=1e-5)
-    parser.add_argument('--n_sched_epochs', type=int, default=50)
-    parser.add_argument('--sched_mult', type=float, default=0.5)
     parser.add_argument('--lr_infer', type=float, default=1)
     parser.add_argument('--n_infer_steps', type=int, default=200)
-    parser.add_argument('--n_epochs', type=int, default=200)
+    parser.add_argument('--n_epochs', type=int, default=100)
     main(parser.parse_args())
