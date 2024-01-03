@@ -47,6 +47,6 @@ def repeat_batch(x, batch_size):
     return x.unsqueeze(0).repeat_interleave(batch_size, dim=0)
 
 
-def arr_to_cov(low_rank, diag):
-    return torch.bmm(low_rank, low_rank.transpose(1, 2)) + torch.diag_embed(F.softplus(diag) + torch.full_like(diag,
-        EPSILON))
+def to_gram(x):
+    x = torch.bmm(x, x.transpose(1, 2))
+    return x
