@@ -47,10 +47,9 @@ def repeat_batch(x, batch_size):
     return x.unsqueeze(0).repeat_interleave(batch_size, dim=0)
 
 
-def to_cov(x):
-    x = torch.bmm(x, x.transpose(1, 2))
-    batch_size, dim, dim = x.shape
-    diag_mask = torch.eye(dim, dtype=torch.bool)
-    diag_mask = repeat_batch(diag_mask, batch_size)
-    x[diag_mask] += EPSILON
-    return x
+def gram(x):
+    return torch.bmm(x, x.transpose(1, 2))
+
+
+def arr_to_cov(offdiag, diag):
+    return gram(offdiag) + torch.diag_embed(F.softplus(diag) + torch.full_like(diag, EPSILON))

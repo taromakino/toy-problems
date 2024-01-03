@@ -8,7 +8,7 @@ from encoder_cnn import IMG_ENCODE_SIZE, EncoderCNN
 from decoder_cnn import IMG_DECODE_SHAPE, IMG_DECODE_SIZE, DecoderCNN
 from torch.optim import AdamW
 from torchmetrics import Accuracy
-from utils.nn_utils import SkipMLP, one_hot, repeat_batch, to_cov
+from utils.nn_utils import SkipMLP, one_hot, repeat_batch, arr_to_cov
 
 
 class Encoder(nn.Module):
@@ -17,19 +17,23 @@ class Encoder(nn.Module):
         self.causal_size = causal_size
         self.spurious_size = spurious_size
         self.encoder_cnn_causal = EncoderCNN()
-        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, causal_size)
-        self.cov_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, causal_size ** 2)
+        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, causal_size)
+        self.offdiag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, causal_size ** 2)
+        self.diag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, causal_size)
         self.encoder_cnn_spurious = EncoderCNN()
         self.mu_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size)
-        self.cov_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size ** 2)
+        self.offdiag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size ** 2)
+        self.diag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size)
 
-    def causal_dist(self, x):
+    def causal_dist(self, x, e):
         batch_size = len(x)
         x = self.encoder_cnn_causal(x).view(batch_size, -1)
-        mu = self.mu_causal(x)
-        cov = self.cov_causal(x)
-        cov = cov.reshape(batch_size, self.causal_size, self.causal_size)
-        cov = to_cov(cov)
+        e_one_hot = one_hot(e, N_ENVS)
+        mu = self.mu_causal(x, e_one_hot)
+        offdiag = self.offdiag_causal(x, e_one_hot)
+        offdiag = offdiag.reshape(batch_size, self.causal_size, self.causal_size)
+        diag = self.diag_causal(x, e_one_hot)
+        cov = arr_to_cov(offdiag, diag)
         return D.MultivariateNormal(mu, cov)
 
     def spurious_dist(self, x, y, e):
@@ -38,13 +42,14 @@ class Encoder(nn.Module):
         y_one_hot = one_hot(y, N_CLASSES)
         e_one_hot = one_hot(e, N_ENVS)
         mu = self.mu_spurious(x, y_one_hot, e_one_hot)
-        cov = self.cov_spurious(x, y_one_hot, e_one_hot)
-        cov = cov.reshape(batch_size, self.spurious_size, self.spurious_size)
-        cov = to_cov(cov)
+        offdiag = self.offdiag_spurious(x, y_one_hot, e_one_hot)
+        offdiag = offdiag.reshape(batch_size, self.spurious_size, self.spurious_size)
+        diag = self.diag_spurious(x, y_one_hot, e_one_hot)
+        cov = arr_to_cov(offdiag, diag)
         return D.MultivariateNormal(mu, cov)
 
     def forward(self, x, y, e):
-        causal_dist = self.causal_dist(x)
+        causal_dist = self.causal_dist(x, e)
         spurious_dist = self.spurious_dist(x, y, e)
         return causal_dist, spurious_dist
 
@@ -68,23 +73,29 @@ class Prior(nn.Module):
         self.causal_size = causal_size
         self.spurious_size = spurious_size
         self.mu_causal = nn.Parameter(torch.zeros(causal_size))
-        self.cov_causal = nn.Parameter(torch.zeros(causal_size, causal_size))
+        self.offdiag_causal = nn.Parameter(torch.zeros(causal_size, causal_size))
+        self.diag_causal = nn.Parameter(torch.zeros(causal_size))
         nn.init.normal_(self.mu_causal, 0, init_sd)
-        nn.init.normal_(self.cov_causal, 0, init_sd)
+        nn.init.normal_(self.offdiag_causal, 0, init_sd)
+        nn.init.normal_(self.diag_causal, 0, init_sd)
         # p(z_s|y,e)
         self.mu_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, spurious_size))
-        self.cov_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, spurious_size, spurious_size))
+        self.offdiag_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, spurious_size, spurious_size))
+        self.diag_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, spurious_size))
         nn.init.normal_(self.mu_spurious, 0, init_sd)
-        nn.init.normal_(self.cov_spurious, 0, init_sd)
+        nn.init.normal_(self.offdiag_spurious, 0, init_sd)
+        nn.init.normal_(self.diag_spurious, 0, init_sd)
 
     def causal_dist(self, batch_size):
         mu = repeat_batch(self.mu_causal, batch_size)
-        cov = to_cov(repeat_batch(self.cov_causal, batch_size))
+        offdiag = repeat_batch(self.offdiag_causal, batch_size)
+        diag = repeat_batch(self.diag_causal, batch_size)
+        cov = arr_to_cov(offdiag, diag)
         return D.MultivariateNormal(mu, cov)
 
     def spurious_dist(self, y, e):
         mu = self.mu_spurious[y, e]
-        cov = to_cov(self.cov_spurious[y, e])
+        cov = arr_to_cov(self.offdiag_spurious[y, e], self.diag_spurious[y, e])
         return D.MultivariateNormal(mu, cov)
 
     def forward(self, y, e):
