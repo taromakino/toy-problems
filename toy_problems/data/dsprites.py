@@ -36,10 +36,10 @@ def make_trainval_data():
     idxs_y1_e0 = np.where((y == 1) & (e == 0))[0]
     idxs_y0_e1 = np.where((y == 0) & (e == 1))[0]
     idxs_y1_e1 = np.where((y == 1) & (e == 1))[0]
-    colors[idxs_y0_e0] = RNG.normal(0.2, 0.05, len(idxs_y0_e0))
-    colors[idxs_y1_e0] = RNG.normal(0.6, 0.05, len(idxs_y1_e0))
-    colors[idxs_y0_e1] = RNG.normal(0.8, 0.05, len(idxs_y0_e1))
-    colors[idxs_y1_e1] = RNG.normal(0.4, 0.05, len(idxs_y1_e1))
+    colors[idxs_y0_e0] = RNG.normal(0.33, 0.1, len(idxs_y0_e0))
+    colors[idxs_y1_e0] = RNG.normal(0.66, 0.1, len(idxs_y1_e0))
+    colors[idxs_y0_e1] = RNG.normal(0.66, 0.1, len(idxs_y0_e1))
+    colors[idxs_y1_e1] = RNG.normal(0.33, 0.1, len(idxs_y1_e1))
     colors = np.clip(colors, 0, 1)[:, None, None]
 
     center_x = RNG.randint(WIDTH_LARGE // 2, IMAGE_SIZE - WIDTH_LARGE // 2 + 1, N_TRAINVAL)
@@ -132,9 +132,13 @@ def main():
     axes[1].set_title('p(color|e=1)')
     fig.suptitle('Assumed Non-Gaussian')
     fig.tight_layout()
-    fig, ax = plt.subplots(1, 1, figsize=(6, 3))
-    ax.hist(color[y == 0], bins='auto', alpha=0.5, color='red')
-    ax.hist(color[y == 1], bins='auto', alpha=0.5, color='blue')
+    fig, axes = plt.subplots(1, 2, figsize=(6, 3))
+    axes[0].hist(color[(y == 0) & (e == 0)], bins='auto', alpha=0.5, color='red')
+    axes[0].hist(color[(y == 1) & (e == 0)], bins='auto', alpha=0.5, color='blue')
+    axes[1].hist(color[(y == 0) & (e == 1)], bins='auto', alpha=0.5, color='red')
+    axes[1].hist(color[(y == 1) & (e == 1)], bins='auto', alpha=0.5, color='blue')
+    axes[0].set_title('p(color|y,e=0)')
+    axes[1].set_title('p(color|y,e=1)')
     fig.tight_layout()
     plt.show(block=True)
 
