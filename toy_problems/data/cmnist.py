@@ -4,6 +4,7 @@ import os
 import torch
 from torchvision import datasets
 from utils.nn_utils import make_dataloader
+from utils.plot import hist_discrete
 
 
 RNG = np.random.RandomState(0)
@@ -35,10 +36,10 @@ def make_trainval_data():
     idxs_y1_e0 = np.where((y == 1) & (e == 0))[0]
     idxs_y0_e1 = np.where((y == 0) & (e == 1))[0]
     idxs_y1_e1 = np.where((y == 1) & (e == 1))[0]
-    colors[idxs_y0_e0] = RNG.normal(0.2, 0.1, len(idxs_y0_e0))
-    colors[idxs_y1_e0] = RNG.normal(0.6, 0.1, len(idxs_y1_e0))
-    colors[idxs_y0_e1] = RNG.normal(0.8, 0.1, len(idxs_y0_e1))
-    colors[idxs_y1_e1] = RNG.normal(0.4, 0.1, len(idxs_y1_e1))
+    colors[idxs_y0_e0] = RNG.normal(0.2, 0.05, len(idxs_y0_e0))
+    colors[idxs_y1_e0] = RNG.normal(0.6, 0.05, len(idxs_y1_e0))
+    colors[idxs_y0_e1] = RNG.normal(0.8, 0.05, len(idxs_y0_e1))
+    colors[idxs_y1_e1] = RNG.normal(0.4, 0.05, len(idxs_y1_e1))
     colors = np.clip(colors, 0, 1)[:, None, None]
 
     x = torch.stack([x, x], dim=1)
@@ -92,43 +93,23 @@ def make_data(train_ratio, batch_size, eval_batch_size):
 
 def main():
     x, y, e, c, s = make_trainval_data()
-    digits = c
-    colors = s
-    fig, axes = plt.subplots(1, 2, figsize=(6, 3))
-    axes[0].hist(digits[e == 0])
-    axes[1].hist(digits[e == 1])
-    axes[0].set_title('p(digit|e=0)')
-    axes[1].set_title('p(digit|e=1)')
-    fig.suptitle('Should be Gaussian')
-    fig.tight_layout()
-    fig, axes = plt.subplots(1, 4, figsize=(12, 3))
-    axes[0].hist(colors[(y == 0) & (e == 0)], bins='auto')
-    axes[1].hist(colors[(y == 0) & (e == 1)], bins='auto')
-    axes[2].hist(colors[(y == 1) & (e == 0)], bins='auto')
-    axes[3].hist(colors[(y == 1) & (e == 1)], bins='auto')
-    axes[0].set_title('p(color|y=0,e=0)')
-    axes[1].set_title('p(color|y=0,e=1)')
-    axes[2].set_title('p(color|y=1,e=0)')
-    axes[3].set_title('p(color|y=1,e=1)')
-    fig.suptitle('Should be Gaussian')
-    fig.tight_layout()
-    fig, axes = plt.subplots(1, 4, figsize=(12, 3))
-    axes[0].hist(digits[(y == 0) & (e == 0)])
-    axes[1].hist(digits[(y == 0) & (e == 1)])
-    axes[2].hist(digits[(y == 1) & (e == 0)])
-    axes[3].hist(digits[(y == 1) & (e == 1)])
-    axes[0].set_title('p(digit|y=0,e=0)')
-    axes[1].set_title('p(digit|y=0,e=1)')
-    axes[2].set_title('p(digit|y=1,e=0)')
-    axes[3].set_title('p(digit|y=1,e=1)')
-    fig.suptitle('Should be non-Gaussian')
+    digit = c
+    color = s
+    fig, ax = plt.subplots(1, 1, figsize=(6, 3))
+    hist_discrete(ax, digit)
+    ax.set_title('p(digit)')
+    fig.suptitle('Assumed Gaussian')
     fig.tight_layout()
     fig, axes = plt.subplots(1, 2, figsize=(6, 3))
-    axes[0].hist(colors[e == 0])
-    axes[1].hist(colors[e == 1])
+    axes[0].hist(color[e == 0])
+    axes[1].hist(color[e == 1])
     axes[0].set_title('p(color|e=0)')
     axes[1].set_title('p(color|e=1)')
-    fig.suptitle('Should be non-Gaussian')
+    fig.suptitle('Assumed non-Gaussian')
+    fig.tight_layout()
+    fig, ax = plt.subplots(1, 1, figsize=(6, 3))
+    ax.hist(color[y == 0], bins='auto', alpha=0.5, color='red')
+    ax.hist(color[y == 1], bins='auto', alpha=0.5, color='blue')
     fig.tight_layout()
     plt.show(block=True)
 
