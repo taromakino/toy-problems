@@ -17,18 +17,17 @@ class Encoder(nn.Module):
         self.causal_size = causal_size
         self.spurious_size = spurious_size
         self.encoder_cnn_causal = EncoderCNN()
-        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, causal_size)
-        self.cov_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, causal_size ** 2)
+        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, causal_size)
+        self.cov_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, causal_size ** 2)
         self.encoder_cnn_spurious = EncoderCNN()
         self.mu_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size)
         self.cov_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size ** 2)
 
-    def causal_dist(self, x, e):
+    def causal_dist(self, x):
         batch_size = len(x)
         x = self.encoder_cnn_causal(x).view(batch_size, -1)
-        e_one_hot = one_hot(e, N_ENVS)
-        mu = self.mu_causal(x, e_one_hot)
-        cov = self.cov_causal(x, e_one_hot)
+        mu = self.mu_causal(x)
+        cov = self.cov_causal(x)
         cov = cov.reshape(batch_size, self.causal_size, self.causal_size)
         cov = to_cov(cov)
         return D.MultivariateNormal(mu, cov)
@@ -45,7 +44,7 @@ class Encoder(nn.Module):
         return D.MultivariateNormal(mu, cov)
 
     def forward(self, x, y, e):
-        causal_dist = self.causal_dist(x, e)
+        causal_dist = self.causal_dist(x)
         spurious_dist = self.spurious_dist(x, y, e)
         return causal_dist, spurious_dist
 
@@ -68,8 +67,8 @@ class Prior(nn.Module):
         super().__init__()
         self.causal_size = causal_size
         self.spurious_size = spurious_size
-        self.mu_causal = nn.Parameter(torch.zeros(N_ENVS, causal_size))
-        self.cov_causal = nn.Parameter(torch.zeros(N_ENVS, causal_size, causal_size))
+        self.mu_causal = nn.Parameter(torch.zeros(causal_size))
+        self.cov_causal = nn.Parameter(torch.zeros(causal_size, causal_size))
         nn.init.normal_(self.mu_causal, 0, init_sd)
         nn.init.normal_(self.cov_causal, 0, init_sd)
         # p(z_s|y,e)
@@ -78,10 +77,9 @@ class Prior(nn.Module):
         nn.init.normal_(self.mu_spurious, 0, init_sd)
         nn.init.normal_(self.cov_spurious, 0, init_sd)
 
-    def causal_dist(self, e):
-        mu = self.mu_causal[e]
-        cov = to_cov(self.cov_causal[e])
-        return D.MultivariateNormal(mu, cov)
+    def causal_dist(self):
+        cov = to_cov(self.cov_causal)
+        return D.MultivariateNormal(self.mu_causal, cov)
 
     def spurious_dist(self, y, e):
         mu = self.mu_spurious[y, e]
@@ -89,7 +87,7 @@ class Prior(nn.Module):
         return D.MultivariateNormal(mu, cov)
 
     def forward(self, y, e):
-        causal_dist = self.causal_dist(e)
+        causal_dist = self.causal_dist()
         spurious_dist = self.spurious_dist(y, e)
         return causal_dist, spurious_dist
 
