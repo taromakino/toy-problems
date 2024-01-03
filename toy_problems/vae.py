@@ -7,6 +7,7 @@ from data import N_CLASSES, N_ENVS
 from encoder_cnn import IMG_ENCODE_SIZE, EncoderCNN
 from decoder_cnn import IMG_DECODE_SHAPE, IMG_DECODE_SIZE, DecoderCNN
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import StepLR
 from torchmetrics import Accuracy
 from utils.nn_utils import SkipMLP, one_hot, repeat_batch, arr_to_cov
 
@@ -106,7 +107,7 @@ class Prior(nn.Module):
 
 class VAE(pl.LightningModule):
     def __init__(self, task, causal_size, spurious_size, h_sizes, y_mult, beta, prior_reg_mult, init_sd, lr, weight_decay,
-            lr_infer, n_infer_steps):
+            n_sched_epochs, sched_mult, lr_infer, n_infer_steps):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
@@ -115,6 +116,8 @@ class VAE(pl.LightningModule):
         self.prior_reg_mult = prior_reg_mult
         self.lr = lr
         self.weight_decay = weight_decay
+        self.n_sched_epochs = n_sched_epochs
+        self.sched_mult = sched_mult
         self.lr_infer = lr_infer
         self.n_infer_steps = n_infer_steps
         # q(z_c,z_s|x)
@@ -231,4 +234,9 @@ class VAE(pl.LightningModule):
         self.log('test_acc', self.test_acc.compute())
 
     def configure_optimizers(self):
-        return AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        optimizer = AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        scheduler = StepLR(optimizer, self.n_sched_epochs, self.sched_mult)
+        return {
+            'optimizer': optimizer,
+            'scheduler': scheduler
+        }
