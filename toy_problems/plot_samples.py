@@ -9,7 +9,6 @@ from vae import VAE
 from utils.enums import Task
 
 
-N_EXAMPLES = 10
 N_COLS = 10
 
 
@@ -34,17 +33,17 @@ def main(args):
     pl.seed_everything(args.seed)
     model = VAE.load_from_checkpoint(os.path.join(task_dpath, f'version_{args.seed}', 'checkpoints', 'best.ckpt'))
     model.eval()
-    for example_idx in range(N_EXAMPLES):
-        fig, axes = plt.subplots(1, N_COLS, figsize=(N_COLS, 2))
-        for ax in axes.flatten():
-            ax.set_xticks([])
-            ax.set_yticks([])
-        plot = PLOT[args.dataset]
-        for col_idx in range(N_COLS):
-            zc_sample, zs_sample = sample_prior(rng, model)
-            x_sample = reconstruct_x(zc_sample, zs_sample)
-            plot(axes[col_idx], x_sample.squeeze().detach().cpu().numpy())
-        fig_dpath = os.path.join(task_dpath, f'version_{args.seed}', 'fig', 'plot_samples')
-        os.makedirs(fig_dpath, exist_ok=True)
-        plt.savefig(os.path.join(fig_dpath, f'{example_idx}.png'))
-        plt.close()
+    fig, axes = plt.subplots(1, N_COLS, figsize=(N_COLS, 2))
+    for ax in axes.flatten():
+        ax.set_xticks([])
+        ax.set_yticks([])
+    plot = PLOT[args.dataset]
+    for col_idx in range(N_COLS):
+        zc_sample, zs_sample = sample_prior(rng, model)
+        z_sample = torch.hstack((zc_sample, zs_sample))
+        x_sample = reconstruct_x(model, z_sample)
+        plot(axes[col_idx], x_sample.squeeze().detach().cpu().numpy())
+    fig_dpath = os.path.join(task_dpath, f'version_{args.seed}', 'fig')
+    os.makedirs(fig_dpath, exist_ok=True)
+    plt.savefig(os.path.join(fig_dpath, 'plot_samples.png'))
+    plt.close()

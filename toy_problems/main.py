@@ -107,7 +107,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--eval_batch_size', type=int, default=2048)
     parser.add_argument('--n_workers', type=int, default=8)
-    parser.add_argument('--causal_size', type=int, default=1)
+    parser.add_argument('--causal_size', type=int, default=8)
     parser.add_argument('--spurious_size', type=int, default=8)
     parser.add_argument('--h_sizes', nargs='+', type=int, default=[256, 256])
     parser.add_argument('--y_mult', type=float, default=1)
