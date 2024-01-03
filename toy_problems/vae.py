@@ -21,9 +21,9 @@ class Encoder(nn.Module):
         self.offdiag_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, causal_size ** 2)
         self.diag_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, causal_size)
         self.encoder_cnn_spurious = EncoderCNN()
-        self.mu_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size)
-        self.offdiag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size ** 2)
-        self.diag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size)
+        self.mu_spurious = SkipMLP(IMG_ENCODE_SIZE, h_sizes, N_CLASSES * N_ENVS * spurious_size)
+        self.offdiag_spurious = SkipMLP(IMG_ENCODE_SIZE, h_sizes, N_CLASSES * N_ENVS * spurious_size ** 2)
+        self.diag_spurious = SkipMLP(IMG_ENCODE_SIZE, h_sizes, N_CLASSES * N_ENVS * spurious_size)
 
     def causal_dist(self, x):
         batch_size = len(x)
@@ -38,12 +38,15 @@ class Encoder(nn.Module):
     def spurious_dist(self, x, y, e):
         batch_size = len(x)
         x = self.encoder_cnn_spurious(x).view(batch_size, -1)
-        y_one_hot = one_hot(y, N_CLASSES)
-        e_one_hot = one_hot(e, N_ENVS)
-        mu = self.mu_spurious(x, y_one_hot, e_one_hot)
-        offdiag = self.offdiag_spurious(x, y_one_hot, e_one_hot)
-        offdiag = offdiag.reshape(batch_size, self.spurious_size, self.spurious_size)
-        diag = self.diag_spurious(x, y_one_hot, e_one_hot)
+        mu = self.mu_spurious(x)
+        mu = mu.reshape(batch_size, N_CLASSES, N_ENVS, self.spurious_size)
+        mu = mu[torch.arange(batch_size), y, e, :]
+        offdiag = self.offdiag_spurious(x)
+        offdiag = offdiag.reshape(batch_size, N_CLASSES, N_ENVS, self.spurious_size, self.spurious_size)
+        offdiag = offdiag[torch.arange(batch_size), y, e, :]
+        diag = self.diag_spurious(x)
+        diag = diag.reshape(batch_size, N_CLASSES, N_ENVS, self.spurious_size)
+        diag = diag[torch.arange(batch_size), y, e, :]
         cov = arr_to_cov(offdiag, diag)
         return D.MultivariateNormal(mu, cov)
 
