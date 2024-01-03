@@ -36,6 +36,13 @@ def make_dataloader(data_tuple, batch_size, is_train):
     return DataLoader(TensorDataset(*data_tuple), shuffle=is_train, batch_size=batch_size)
 
 
+def one_hot(categorical, n_categories):
+    batch_size = len(categorical)
+    out = torch.zeros((batch_size, n_categories), device=categorical.device)
+    out[torch.arange(batch_size), categorical] = 1
+    return out
+
+
 def repeat_batch(x, batch_size):
     return x.unsqueeze(0).repeat_interleave(batch_size, dim=0)
 

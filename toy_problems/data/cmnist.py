@@ -45,6 +45,7 @@ def make_trainval_data():
     x = x / 255
     x[:, 0, :, :] *= colors
     x[:, 1, :, :] *= (1 - colors)
+    x[idxs_env0, :, 0, 0] = 1
 
     y = y.long()
     e = e
