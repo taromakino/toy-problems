@@ -7,6 +7,7 @@ from utils.nn_utils import make_dataloader
 
 
 RNG = np.random.RandomState(0)
+PROB_ZERO_E0 = 0.2
 
 
 def flip_binary(x, flip_prob):
@@ -24,7 +25,12 @@ def make_trainval_data():
 
     y = flip_binary(digits.clone(), 0.25)
 
-    idxs_env0 = RNG.choice(n_trainval, n_trainval // 2, replace=False)
+    idxs_env0 = []
+    zero_idxs = np.where(digits == 0)[0]
+    one_idxs = np.where(digits == 1)[0]
+    idxs_env0.append(RNG.choice(zero_idxs, size=int(PROB_ZERO_E0 * len(zero_idxs))))
+    idxs_env0.append(RNG.choice(one_idxs, size=int((1 - PROB_ZERO_E0) * len(one_idxs))))
+    idxs_env0 = np.concatenate(idxs_env0)
     idxs_env1 = np.setdiff1d(np.arange(n_trainval), idxs_env0)
 
     e = torch.zeros(n_trainval, dtype=torch.long)
@@ -45,7 +51,6 @@ def make_trainval_data():
     x = x / 255
     x[:, 0, :, :] *= colors
     x[:, 1, :, :] *= (1 - colors)
-    x[idxs_env0, :, 0, 0] = 1
 
     y = y.long()
     e = e
@@ -94,10 +99,6 @@ def make_data(train_ratio, batch_size, eval_batch_size):
 def main():
     x, y, e, c, s = make_trainval_data()
     color = s
-    fig, ax = plt.subplots(1, 1, figsize=(6, 3))
-    ax.hist(color, bins='auto')
-    ax.set_title('p(color)')
-    fig.tight_layout()
     fig, axes = plt.subplots(1, 2, figsize=(6, 3))
     axes[0].hist(color[(y == 0) & (e == 0)], bins='auto', alpha=0.5, color='red')
     axes[0].hist(color[(y == 1) & (e == 0)], bins='auto', alpha=0.5, color='blue')
