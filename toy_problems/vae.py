@@ -8,7 +8,7 @@ from encoder_cnn import IMG_ENCODE_SIZE, EncoderCNN
 from decoder_cnn import IMG_DECODE_SHAPE, IMG_DECODE_SIZE, DecoderCNN
 from torch.optim import AdamW
 from torchmetrics import Accuracy
-from utils.nn_utils import SkipMLP, one_hot, repeat_batch, arr_to_cov
+from utils.nn_utils import SkipMLP, one_hot, arr_to_cov
 
 
 class Encoder(nn.Module):
@@ -16,19 +16,20 @@ class Encoder(nn.Module):
         super().__init__()
         self.z_size = z_size
         self.encoder_cnn = EncoderCNN()
-        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size)
-        self.offdiag_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size ** 2)
-        self.diag_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size)
+        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size)
+        self.offdiag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size ** 2)
+        self.diag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size)
         self.mu_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
         self.offdiag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size ** 2)
         self.diag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
 
-    def causal_dist(self, x):
+    def causal_dist(self, x, e):
         batch_size = len(x)
-        mu = self.mu_causal(x)
-        offdiag = self.offdiag_causal(x)
+        e_one_hot = one_hot(e, N_ENVS)
+        mu = self.mu_causal(x, e_one_hot)
+        offdiag = self.offdiag_causal(x, e_one_hot)
         offdiag = offdiag.reshape(batch_size, self.z_size, self.z_size)
-        diag = self.diag_causal(x)
+        diag = self.diag_causal(x, e_one_hot)
         cov = arr_to_cov(offdiag, diag)
         return D.MultivariateNormal(mu, cov)
 
@@ -45,7 +46,7 @@ class Encoder(nn.Module):
 
     def forward(self, x, y, e):
         x = self.encoder_cnn(x).flatten(start_dim=1)
-        causal_dist = self.causal_dist(x)
+        causal_dist = self.causal_dist(x, e)
         spurious_dist = self.spurious_dist(x, y, e)
         return causal_dist, spurious_dist
 
@@ -66,9 +67,9 @@ class Decoder(nn.Module):
 class Prior(nn.Module):
     def __init__(self, z_size, init_sd):
         super().__init__()
-        self.mu_causal = nn.Parameter(torch.zeros(z_size))
-        self.offdiag_causal = nn.Parameter(torch.zeros(z_size, z_size))
-        self.diag_causal = nn.Parameter(torch.zeros(z_size))
+        self.mu_causal = nn.Parameter(torch.zeros(N_ENVS, z_size))
+        self.offdiag_causal = nn.Parameter(torch.zeros(N_ENVS, z_size, z_size))
+        self.diag_causal = nn.Parameter(torch.zeros(N_ENVS, z_size))
         nn.init.normal_(self.mu_causal, 0, init_sd)
         nn.init.normal_(self.offdiag_causal, 0, init_sd)
         nn.init.normal_(self.diag_causal, 0, init_sd)
@@ -80,11 +81,9 @@ class Prior(nn.Module):
         nn.init.normal_(self.offdiag_spurious, 0, init_sd)
         nn.init.normal_(self.diag_spurious, 0, init_sd)
 
-    def causal_dist(self, batch_size):
-        mu = repeat_batch(self.mu_causal, batch_size)
-        offdiag = repeat_batch(self.offdiag_causal, batch_size)
-        diag = repeat_batch(self.diag_causal, batch_size)
-        cov = arr_to_cov(offdiag, diag)
+    def causal_dist(self, e):
+        mu = self.mu_causal[e]
+        cov = arr_to_cov(self.offdiag_causal[e], self.diag_causal[e])
         return D.MultivariateNormal(mu, cov)
 
     def spurious_dist(self, y, e):
@@ -93,7 +92,7 @@ class Prior(nn.Module):
         return D.MultivariateNormal(mu, cov)
 
     def forward(self, y, e):
-        causal_dist = self.causal_dist(len(y))
+        causal_dist = self.causal_dist(e)
         spurious_dist = self.spurious_dist(y, e)
         return causal_dist, spurious_dist
 
@@ -183,8 +182,10 @@ class VAE(pl.LightningModule):
         y_pred = self.classifier(z_c).view(-1)
         log_prob_y_zc = -F.binary_cross_entropy_with_logits(y_pred, y.float(), reduction='none')
         # log q(z_c,z_s|x,y,e)
-        prior_causal, prior_spurious = self.prior(y, e)
-        log_prob_z = prior_causal.log_prob(z_c) + prior_spurious.log_prob(z_s)
+        posterior_causal, posterior_spurious = self.encoder(x, y, e)
+        log_prob_zc = posterior_causal.log_prob(z_c)
+        log_prob_zs = posterior_spurious.log_prob(z_s)
+        log_prob_z = log_prob_zc + log_prob_zs
         loss = -log_prob_x_z - self.y_mult * log_prob_y_zc - log_prob_z
         return loss
 
