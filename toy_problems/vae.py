@@ -184,10 +184,11 @@ class VAE(pl.LightningModule):
         log_prob_y_zc = -F.binary_cross_entropy_with_logits(y_pred, y.float(), reduction='none')
         # log q(z_c,z_s|x,y,e)
         posterior_causal, posterior_spurious = self.encoder(x, y, e)
-        log_prob_zc = posterior_causal.log_prob(z_c)
-        log_prob_zs = posterior_spurious.log_prob(z_s)
-        log_prob_z = log_prob_zc + log_prob_zs
-        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc - log_prob_z
+        prior_causal, prior_spurious = self.prior(y, e)
+        kl_causal = D.kl_divergence(posterior_causal, prior_causal).mean()
+        kl_spurious = D.kl_divergence(posterior_spurious, prior_spurious).mean()
+        kl = kl_causal + kl_spurious
+        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl
         return loss
 
     def opt_infer_loss(self, x, y_value, e_value):
