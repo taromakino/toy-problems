@@ -166,60 +166,13 @@ class VAE(pl.LightningModule):
     def on_validation_epoch_end(self):
         self.log('val_acc', self.val_acc.compute())
 
-    def make_z_param(self, x, y_value, e_value):
-        batch_size = len(x)
-        y = torch.full((batch_size,), y_value, dtype=torch.long, device=self.device)
-        e = torch.full((batch_size,), e_value, dtype=torch.long, device=self.device)
-        posterior_causal, posterior_spurious = self.encoder(x, y, e)
-        z_c = posterior_causal.loc
-        z_s = posterior_spurious.loc
-        return nn.Parameter(z_c.detach()), nn.Parameter(z_s.detach())
-
-    def infer_loss(self, x, y, e, z_c, z_s):
-        # log p(x|z_c,z_s)
-        z = torch.hstack((z_c, z_s))
-        log_prob_x_z = self.decoder(x, z)
-        # log p(y|z_c)
-        y_pred = self.classifier(z_c).view(-1)
-        log_prob_y_zc = -F.binary_cross_entropy_with_logits(y_pred, y.float(), reduction='none')
-        # log q(z_c,z_s|x,y,e)
-        posterior_causal, posterior_spurious = self.encoder(x, y, e)
-        log_prob_zc = posterior_causal.log_prob(z_c)
-        log_prob_zs = posterior_spurious.log_prob(z_s)
-        log_prob_z = log_prob_zc + log_prob_zs
-        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc - log_prob_z
-        return loss
-
-    def opt_infer_loss(self, x, y_value, e_value):
-        batch_size = len(x)
-        zc_param, zs_param = self.make_z_param(x, y_value, e_value)
-        y = torch.full((batch_size,), y_value, dtype=torch.long, device=self.device)
-        e = torch.full((batch_size,), e_value, dtype=torch.long, device=self.device)
-        optim = AdamW([zc_param, zs_param], lr=self.lr_infer)
-        for _ in range(self.n_infer_steps):
-            optim.zero_grad()
-            loss = self.infer_loss(x, y, e, zc_param, zs_param)
-            loss.mean().backward()
-            optim.step()
-        return loss.detach().clone()
-
-    def classify(self, x):
-        loss_candidates = []
-        y_candidates = []
-        for y_value in range(N_CLASSES):
-            for e_value in range(N_ENVS):
-                loss_candidates.append(self.opt_infer_loss(x, y_value, e_value)[:, None])
-                y_candidates.append(y_value)
-        loss_candidates = torch.hstack(loss_candidates)
-        y_candidates = torch.tensor(y_candidates, device=self.device)
-        y_pred = y_candidates[loss_candidates.argmin(dim=1)]
-        return y_pred
-
     def test_step(self, batch, batch_idx):
         x, y, e, c, s = batch
-        with torch.set_grad_enabled(True):
-            y_pred = self.classify(x)
-            self.test_acc.update(y_pred, y)
+        x = self.encoder.encoder_cnn(x).flatten(start_dim=1)
+        causal_dist = self.causal_dist(x)
+        z_c = causal_dist.loc
+        y_pred = self.classifier(z_c).view(-1)
+        self.test_acc.update(y_pred, y)
 
     def on_test_epoch_end(self):
         self.log('test_acc', self.test_acc.compute())
