@@ -99,8 +99,7 @@ class Prior(nn.Module):
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, z_size, h_sizes, y_mult, beta, prior_reg_mult, init_sd, lr, weight_decay, lr_infer,
-            n_infer_steps):
+    def __init__(self, task, z_size, h_sizes, y_mult, beta, prior_reg_mult, init_sd, lr, weight_decay):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
@@ -109,8 +108,6 @@ class VAE(pl.LightningModule):
         self.prior_reg_mult = prior_reg_mult
         self.lr = lr
         self.weight_decay = weight_decay
-        self.lr_infer = lr_infer
-        self.n_infer_steps = n_infer_steps
         # q(z_c,z_s|x)
         self.encoder = Encoder(z_size, h_sizes)
         # p(x|z_c, z_s)
@@ -118,7 +115,7 @@ class VAE(pl.LightningModule):
         # p(z_c,z_s|y,e)
         self.prior = Prior(z_size, init_sd)
         # p(y|z)
-        self.classifier = nn.Linear(z_size, 1)
+        self.classifier = SkipMLP(z_size, h_sizes, 1)
         self.val_acc = Accuracy('binary')
         self.test_acc = Accuracy('binary')
 
@@ -166,12 +163,16 @@ class VAE(pl.LightningModule):
     def on_validation_epoch_end(self):
         self.log('val_acc', self.val_acc.compute())
 
-    def test_step(self, batch, batch_idx):
-        x, y, e, c, s = batch
+    def classify(self, x):
         x = self.encoder.encoder_cnn(x).flatten(start_dim=1)
         causal_dist = self.encoder.causal_dist(x)
         z_c = causal_dist.loc
         y_pred = self.classifier(z_c).view(-1)
+        return y_pred
+
+    def test_step(self, batch, batch_idx):
+        x, y, e, c, s = batch
+        y_pred = self.classify(x)
         self.test_acc.update(y_pred, y)
 
     def on_test_epoch_end(self):
