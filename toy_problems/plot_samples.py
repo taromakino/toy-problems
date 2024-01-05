@@ -12,13 +12,12 @@ from utils.enums import Task
 N_COLS = 10
 
 
-def sample_prior(rng, model, exogenous_size):
+def sample_prior(rng, model):
     y = torch.tensor(rng.choice(N_CLASSES), dtype=torch.long, device=model.device)[None]
     e = torch.tensor(rng.choice(N_ENVS), dtype=torch.long, device=model.device)[None]
-    prior_causal, prior_spurious = model.prior(y, e)
-    zc_sample, zs_sample = prior_causal.sample(), prior_spurious.sample()
-    zx_sample = torch.randn((1, exogenous_size))
-    return zc_sample, zs_sample, zx_sample
+    causal_dist, spurious_dist = model.prior(y, e)
+    zc_sample, zs_sample = causal_dist.sample(), spurious_dist.sample()
+    return zc_sample, zs_sample
 
 
 def reconstruct_x(model, z):
@@ -40,8 +39,8 @@ def main(args):
         ax.set_yticks([])
     plot = PLOT[args.dataset]
     for col_idx in range(N_COLS):
-        zc_sample, zs_sample, zx_sample = sample_prior(rng, model, args.exogenous_size)
-        z_sample = torch.hstack((zc_sample, zs_sample, zx_sample))
+        zc_sample, zs_sample = sample_prior(rng, model)
+        z_sample = torch.hstack((zc_sample, zs_sample))
         x_sample = reconstruct_x(model, z_sample)
         plot(axes[col_idx], x_sample.squeeze().detach().cpu().numpy())
     fig_dpath = os.path.join(task_dpath, f'version_{args.seed}', 'fig')
