@@ -16,19 +16,26 @@ class Encoder(nn.Module):
         super().__init__()
         self.z_size = z_size
         self.encoder_cnn = EncoderCNN()
-        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size)
-        self.offdiag_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size ** 2)
-        self.diag_causal = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size)
+        # Causal
+        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size)
+        self.offdiag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size ** 2)
+        self.diag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size)
+        # Spurious
         self.mu_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
         self.offdiag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size ** 2)
         self.diag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
+        # Exogenous
+        self.mu_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size)
+        self.offdiag_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size ** 2)
+        self.diag_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size)
 
-    def causal_dist(self, x):
+    def causal_dist(self, x, e):
         batch_size = len(x)
-        mu = self.mu_causal(x)
-        offdiag = self.offdiag_causal(x)
+        e_one_hot = one_hot(e, N_ENVS)
+        mu = self.mu_causal(x, e_one_hot)
+        offdiag = self.offdiag_causal(x, e_one_hot)
         offdiag = offdiag.reshape(batch_size, self.z_size, self.z_size)
-        diag = self.diag_causal(x)
+        diag = self.diag_causal(x, e_one_hot)
         cov = arr_to_cov(offdiag, diag)
         return D.MultivariateNormal(mu, cov)
 
@@ -43,17 +50,27 @@ class Encoder(nn.Module):
         cov = arr_to_cov(offdiag, diag)
         return D.MultivariateNormal(mu, cov)
 
+    def exogenous_dist(self, x):
+        batch_size = len(x)
+        mu = self.mu_exogenous(x)
+        offdiag = self.offdiag_exogenous(x)
+        offdiag = offdiag.reshape(batch_size, self.z_size, self.z_size)
+        diag = self.diag_exogenous(x)
+        cov = arr_to_cov(offdiag, diag)
+        return D.MultivariateNormal(mu, cov)
+
     def forward(self, x, y, e):
         x = self.encoder_cnn(x).flatten(start_dim=1)
-        causal_dist = self.causal_dist(x)
+        causal_dist = self.causal_dist(x, e)
         spurious_dist = self.spurious_dist(x, y, e)
-        return causal_dist, spurious_dist
+        exogenous_dist = self.exogenous_dist(x)
+        return causal_dist, spurious_dist, exogenous_dist
 
 
 class Decoder(nn.Module):
     def __init__(self, z_size, h_sizes):
         super().__init__()
-        self.mlp = SkipMLP(2 * z_size, h_sizes, IMG_DECODE_SIZE)
+        self.mlp = SkipMLP(3 * z_size, h_sizes, IMG_DECODE_SIZE)
         self.decoder_cnn = DecoderCNN()
 
     def forward(self, x, z):
@@ -66,25 +83,28 @@ class Decoder(nn.Module):
 class Prior(nn.Module):
     def __init__(self, z_size, init_sd):
         super().__init__()
-        self.mu_causal = nn.Parameter(torch.zeros(z_size))
-        self.offdiag_causal = nn.Parameter(torch.zeros(z_size, z_size))
-        self.diag_causal = nn.Parameter(torch.zeros(z_size))
+        self.mu_causal = nn.Parameter(torch.zeros(N_ENVS, z_size))
+        self.offdiag_causal = nn.Parameter(torch.zeros(N_ENVS, z_size, z_size))
+        self.diag_causal = nn.Parameter(torch.zeros(N_ENVS, z_size))
         nn.init.normal_(self.mu_causal, 0, init_sd)
         nn.init.normal_(self.offdiag_causal, 0, init_sd)
         nn.init.normal_(self.diag_causal, 0, init_sd)
-        # p(z_s|y,e)
         self.mu_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, z_size))
         self.offdiag_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, z_size, z_size))
         self.diag_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, z_size))
         nn.init.normal_(self.mu_spurious, 0, init_sd)
         nn.init.normal_(self.offdiag_spurious, 0, init_sd)
         nn.init.normal_(self.diag_spurious, 0, init_sd)
+        self.mu_exogenous = nn.Parameter(torch.zeros(z_size))
+        self.offdiag_exogenous = nn.Parameter(torch.zeros(z_size, z_size))
+        self.diag_exogenous = nn.Parameter(torch.zeros(z_size))
+        nn.init.normal_(self.mu_exogenous, 0, init_sd)
+        nn.init.normal_(self.offdiag_exogenous, 0, init_sd)
+        nn.init.normal_(self.diag_exogenous, 0, init_sd)
 
-    def causal_dist(self, batch_size):
-        mu = repeat_batch(self.mu_causal, batch_size)
-        offdiag = repeat_batch(self.offdiag_causal, batch_size)
-        diag = repeat_batch(self.diag_causal, batch_size)
-        cov = arr_to_cov(offdiag, diag)
+    def causal_dist(self, e):
+        mu = self.mu_causal[e]
+        cov = arr_to_cov(self.offdiag_causal[e], self.diag_causal[e])
         return D.MultivariateNormal(mu, cov)
 
     def spurious_dist(self, y, e):
@@ -92,10 +112,18 @@ class Prior(nn.Module):
         cov = arr_to_cov(self.offdiag_spurious[y, e], self.diag_spurious[y, e])
         return D.MultivariateNormal(mu, cov)
 
+    def exogenous_dist(self, batch_size):
+        mu = repeat_batch(self.mu_exogenous, batch_size)
+        offdiag = repeat_batch(self.offdiag_exogenous, batch_size)
+        diag = repeat_batch(self.diag_exogenous, batch_size)
+        cov = arr_to_cov(offdiag, diag)
+        return D.MultivariateNormal(mu, cov)
+
     def forward(self, y, e):
-        causal_dist = self.causal_dist(len(y))
+        causal_dist = self.causal_dist(e)
         spurious_dist = self.spurious_dist(y, e)
-        return causal_dist, spurious_dist
+        exogenous_dist = self.exogenous_dist(len(y))
+        return causal_dist, spurious_dist, exogenous_dist
 
 
 class VAE(pl.LightningModule):
@@ -115,7 +143,7 @@ class VAE(pl.LightningModule):
         # p(z_c,z_s|y,e)
         self.prior = Prior(z_size, init_sd)
         # p(y|z)
-        self.classifier = SkipMLP(z_size, h_sizes, 1)
+        self.classifier = nn.Linear(z_size, 1)
         self.val_acc = Accuracy('binary')
         self.test_acc = Accuracy('binary')
 
@@ -127,20 +155,22 @@ class VAE(pl.LightningModule):
 
     def loss(self, x, y, e):
         # z_c,z_s ~ q(z_c,z_s|x)
-        posterior_causal, posterior_spurious = self.encoder(x, y, e)
+        posterior_causal, posterior_spurious, posterior_exogenous = self.encoder(x, y, e)
         z_c = self.sample_z(posterior_causal)
         z_s = self.sample_z(posterior_spurious)
+        z_x = self.sample_z(posterior_exogenous)
         # E_q(z_c,z_s|x)[log p(x|z_c,z_s)]
-        z = torch.hstack((z_c, z_s))
+        z = torch.hstack((z_c, z_s, z_x))
         log_prob_x_z = self.decoder(x, z).mean()
         # E_q(z_c|x)[log p(y|z_c)]
         y_pred = self.classifier(z_c).view(-1)
         log_prob_y_zc = -F.binary_cross_entropy_with_logits(y_pred, y.float())
         # KL(q(z_c,z_s|x) || p(z_c|e)p(z_s|y,e))
-        prior_causal, prior_spurious = self.prior(y, e)
+        prior_causal, prior_spurious, prior_exogenous = self.prior(y, e)
         kl_causal = D.kl_divergence(posterior_causal, prior_causal).mean()
         kl_spurious = D.kl_divergence(posterior_spurious, prior_spurious).mean()
-        kl = kl_causal + kl_spurious
+        kl_exogenous = D.kl_divergence(posterior_exogenous, prior_exogenous).mean()
+        kl = kl_causal + kl_spurious + kl_exogenous
         prior_reg = (torch.hstack((prior_causal.loc, prior_spurious.loc)) ** 2).mean()
         return log_prob_x_z, log_prob_y_zc, kl, prior_reg, y_pred
 
@@ -164,10 +194,22 @@ class VAE(pl.LightningModule):
         self.log('val_acc', self.val_acc.compute())
 
     def classify(self, x):
+        batch_size = len(x)
         x = self.encoder.encoder_cnn(x).flatten(start_dim=1)
-        causal_dist = self.encoder.causal_dist(x)
-        z_c = causal_dist.loc
-        y_pred = self.classifier(z_c).view(-1)
+        pred_candidates = []
+        y_candidates = []
+        for e_value in range(N_ENVS):
+            e = torch.full((batch_size,), e_value, dtype=torch.long, device=self.device)
+            causal_dist = self.encoder.causal_dist(x, e)
+            z_c = causal_dist.loc
+            y_pred = torch.sigmoid(self.classifier(z_c).view(-1))
+            pred_candidates.append(1 - y_pred)
+            pred_candidates.append(y_pred)
+            y_candidates.append(0)
+            y_candidates.append(1)
+        pred_candidates = torch.stack(pred_candidates, dim=1)
+        y_candidates = torch.tensor(y_candidates, device=self.device)
+        y_pred = y_candidates[pred_candidates.argmax(dim=1)]
         return y_pred
 
     def test_step(self, batch, batch_idx):
