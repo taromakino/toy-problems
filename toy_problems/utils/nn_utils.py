@@ -53,3 +53,7 @@ def gram(x):
 
 def arr_to_cov(offdiag, diag):
     return gram(offdiag) + torch.diag_embed(F.softplus(diag) + torch.full_like(diag, EPSILON))
+
+
+def kl_standard_normal(mu, var):
+    return -0.5 * torch.sum(1 + torch.log(var) - mu.pow(2) - var, dim=1)

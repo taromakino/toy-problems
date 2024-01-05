@@ -13,11 +13,12 @@ N_EXAMPLES = 10
 N_COLS = 10
 
 
-def sample_prior(rng, model):
+def sample_prior(rng, model, exogenous_size):
     y = torch.tensor(rng.choice(N_CLASSES), dtype=torch.long, device=model.device)[None]
     e = torch.tensor(rng.choice(N_ENVS), dtype=torch.long, device=model.device)[None]
-    prior_causal, prior_spurious, prior_exogenous = model.prior(y, e)
-    zc_sample, zs_sample, zx_sample = prior_causal.sample(), prior_spurious.sample(), prior_exogenous.sample()
+    prior_causal, prior_spurious = model.prior(y, e)
+    zc_sample, zs_sample = prior_causal.sample(), prior_spurious.sample()
+    zx_sample = torch.randn((1, exogenous_size))
     return zc_sample, zs_sample, zx_sample
 
 
@@ -39,8 +40,8 @@ def main(args):
     for example_idx in range(N_EXAMPLES):
         x_seed, y_seed, e_seed = x[[example_idx]], y[[example_idx]], e[[example_idx]]
         x_seed, y_seed, e_seed = x_seed.to(model.device), y_seed.to(model.device), e_seed.to(model.device)
-        posterior_causal, posterior_spurious, posterior_exogenous = model.encoder(x_seed, y_seed, e_seed)
-        zc_seed, zs_seed, zx_seed = posterior_causal.loc, posterior_spurious.loc, posterior_exogenous.loc
+        posterior_causal, posterior_spurious, mu_exogenous, var_exogenous = model.encoder(x_seed, y_seed, e_seed)
+        zc_seed, zs_seed, zx_seed = posterior_causal.loc, posterior_spurious.loc, mu_exogenous
         fig, axes = plt.subplots(3, N_COLS, figsize=(2 * N_COLS, 2 * 2))
         for ax in axes.flatten():
             ax.set_xticks([])
@@ -50,7 +51,7 @@ def main(args):
         plot(axes[1, 0], x_seed.squeeze().cpu().numpy())
         plot(axes[2, 0], x_seed.squeeze().cpu().numpy())
         for col_idx in range(1, N_COLS):
-            zc_sample, zs_sample, zx_sample = sample_prior(rng, model)
+            zc_sample, zs_sample, zx_sample = sample_prior(rng, model, args.exogenous_size)
             x_pred_causal = reconstruct_x(model, torch.hstack((zc_sample, zs_seed, zx_seed)))
             x_pred_spurious = reconstruct_x(model, torch.hstack((zc_seed, zs_sample, zx_seed)))
             x_pred_exogenous = reconstruct_x(model, torch.hstack((zc_seed, zs_seed, zx_sample)))

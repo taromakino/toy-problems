@@ -8,7 +8,7 @@ from encoder_cnn import IMG_ENCODE_SIZE, EncoderCNN
 from decoder_cnn import IMG_DECODE_SHAPE, IMG_DECODE_SIZE, DecoderCNN
 from torch.optim import AdamW
 from torchmetrics import Accuracy
-from utils.nn_utils import SkipMLP, one_hot, repeat_batch, arr_to_cov
+from utils.nn_utils import SkipMLP, one_hot, arr_to_cov, kl_standard_normal
 
 
 class Encoder(nn.Module):
@@ -28,8 +28,7 @@ class Encoder(nn.Module):
         self.diag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size)
         # Exogenous
         self.mu_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, exogenous_size)
-        self.offdiag_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, exogenous_size ** 2)
-        self.diag_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, exogenous_size)
+        self.logvar_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, exogenous_size)
 
     def causal_dist(self, x, e):
         batch_size = len(x)
@@ -53,20 +52,16 @@ class Encoder(nn.Module):
         return D.MultivariateNormal(mu, cov)
 
     def exogenous_dist(self, x):
-        batch_size = len(x)
         mu = self.mu_exogenous(x)
-        offdiag = self.offdiag_exogenous(x)
-        offdiag = offdiag.reshape(batch_size, self.exogenous_size, self.exogenous_size)
-        diag = self.diag_exogenous(x)
-        cov = arr_to_cov(offdiag, diag)
-        return D.MultivariateNormal(mu, cov)
+        var = F.softplus(self.logvar_exogenous(x))
+        return mu, var
 
     def forward(self, x, y, e):
         x = self.encoder_cnn(x).flatten(start_dim=1)
         causal_dist = self.causal_dist(x, e)
         spurious_dist = self.spurious_dist(x, y, e)
-        exogenous_dist = self.exogenous_dist(x)
-        return causal_dist, spurious_dist, exogenous_dist
+        mu_exogenous, var_exogenous = self.exogenous_dist(x)
+        return causal_dist, spurious_dist, mu_exogenous, var_exogenous
 
 
 class Decoder(nn.Module):
@@ -83,7 +78,7 @@ class Decoder(nn.Module):
 
 
 class Prior(nn.Module):
-    def __init__(self, causal_size, spurious_size, exogenous_size, init_sd):
+    def __init__(self, causal_size, spurious_size, init_sd):
         super().__init__()
         self.mu_causal = nn.Parameter(torch.zeros(N_ENVS, causal_size))
         self.offdiag_causal = nn.Parameter(torch.zeros(N_ENVS, causal_size, causal_size))
@@ -97,12 +92,6 @@ class Prior(nn.Module):
         nn.init.normal_(self.mu_spurious, 0, init_sd)
         nn.init.normal_(self.offdiag_spurious, 0, init_sd)
         nn.init.normal_(self.diag_spurious, 0, init_sd)
-        self.mu_exogenous = nn.Parameter(torch.zeros(exogenous_size))
-        self.offdiag_exogenous = nn.Parameter(torch.zeros(exogenous_size, exogenous_size))
-        self.diag_exogenous = nn.Parameter(torch.zeros(exogenous_size))
-        nn.init.normal_(self.mu_exogenous, 0, init_sd)
-        nn.init.normal_(self.offdiag_exogenous, 0, init_sd)
-        nn.init.normal_(self.diag_exogenous, 0, init_sd)
 
     def causal_dist(self, e):
         mu = self.mu_causal[e]
@@ -114,22 +103,15 @@ class Prior(nn.Module):
         cov = arr_to_cov(self.offdiag_spurious[y, e], self.diag_spurious[y, e])
         return D.MultivariateNormal(mu, cov)
 
-    def exogenous_dist(self, batch_size):
-        mu = repeat_batch(self.mu_exogenous, batch_size)
-        offdiag = repeat_batch(self.offdiag_exogenous, batch_size)
-        diag = repeat_batch(self.diag_exogenous, batch_size)
-        cov = arr_to_cov(offdiag, diag)
-        return D.MultivariateNormal(mu, cov)
-
     def forward(self, y, e):
         causal_dist = self.causal_dist(e)
         spurious_dist = self.spurious_dist(y, e)
-        exogenous_dist = self.exogenous_dist(len(y))
-        return causal_dist, spurious_dist, exogenous_dist
+        return causal_dist, spurious_dist
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, causal_size, spurious_size, exogenous_size, h_sizes, y_mult, beta, prior_reg_mult, init_sd, lr, weight_decay):
+    def __init__(self, task, causal_size, spurious_size, exogenous_size, h_sizes, y_mult, beta, prior_reg_mult, init_sd,
+            lr, weight_decay):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
@@ -143,24 +125,29 @@ class VAE(pl.LightningModule):
         # p(x|z_c, z_s)
         self.decoder = Decoder(causal_size, spurious_size, exogenous_size, h_sizes)
         # p(z_c,z_s|y,e)
-        self.prior = Prior(causal_size, spurious_size, exogenous_size, init_sd)
+        self.prior = Prior(causal_size, spurious_size, init_sd)
         # p(y|z)
         self.classifier = nn.Linear(causal_size, 1)
         self.val_acc = Accuracy('binary')
         self.test_acc = Accuracy('binary')
 
-    def sample_z(self, dist):
+    def sample_z_dependent(self, dist):
         mu, scale_tril = dist.loc, dist.scale_tril
         batch_size, z_size = mu.shape
         epsilon = torch.randn(batch_size, z_size, 1).to(self.device)
         return mu + torch.bmm(scale_tril, epsilon).squeeze(-1)
 
+    def sample_z_independent(self, mu, var):
+        sd = var.sqrt()
+        eps = torch.randn_like(sd)
+        return mu + eps * sd
+
     def loss(self, x, y, e):
         # z_c,z_s ~ q(z_c,z_s|x)
-        posterior_causal, posterior_spurious, posterior_exogenous = self.encoder(x, y, e)
-        z_c = self.sample_z(posterior_causal)
-        z_s = self.sample_z(posterior_spurious)
-        z_x = self.sample_z(posterior_exogenous)
+        posterior_causal, posterior_spurious, mu_exogenous, var_exogenous = self.encoder(x, y, e)
+        z_c = self.sample_z_dependent(posterior_causal)
+        z_s = self.sample_z_dependent(posterior_spurious)
+        z_x = self.sample_z_independent(mu_exogenous, var_exogenous)
         # E_q(z_c,z_s|x)[log p(x|z_c,z_s)]
         z = torch.hstack((z_c, z_s, z_x))
         log_prob_x_z = self.decoder(x, z).mean()
@@ -168,10 +155,10 @@ class VAE(pl.LightningModule):
         y_pred = self.classifier(z_c).view(-1)
         log_prob_y_zc = -F.binary_cross_entropy_with_logits(y_pred, y.float())
         # KL(q(z_c,z_s|x) || p(z_c|e)p(z_s|y,e))
-        prior_causal, prior_spurious, prior_exogenous = self.prior(y, e)
+        prior_causal, prior_spurious = self.prior(y, e)
         kl_causal = D.kl_divergence(posterior_causal, prior_causal).mean()
         kl_spurious = D.kl_divergence(posterior_spurious, prior_spurious).mean()
-        kl_exogenous = D.kl_divergence(posterior_exogenous, prior_exogenous).mean()
+        kl_exogenous = kl_standard_normal(mu_exogenous, var_exogenous).mean()
         kl = kl_causal + kl_spurious + kl_exogenous
         prior_reg = (torch.hstack((prior_causal.loc, prior_spurious.loc)) ** 2).mean()
         return log_prob_x_z, log_prob_y_zc, kl, prior_reg, y_pred
