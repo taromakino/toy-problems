@@ -18,7 +18,7 @@ def sample_prior(rng, model, exogenous_size):
     e = torch.tensor(rng.choice(N_ENVS), dtype=torch.long, device=model.device)[None]
     prior_causal, prior_spurious = model.prior(y, e)
     zc_sample, zs_sample = prior_causal.sample(), prior_spurious.sample()
-    zx_sample = torch.randn((1, exogenous_size))
+    zx_sample = torch.randn((1, exogenous_size), device=model.device)
     return zc_sample, zs_sample, zx_sample
 
 
