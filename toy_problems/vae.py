@@ -169,7 +169,7 @@ class VAE(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         x, y, e, c, s = batch
         x = self.encoder.encoder_cnn(x).flatten(start_dim=1)
-        causal_dist = self.causal_dist(x)
+        causal_dist = self.encoder.causal_dist(x)
         z_c = causal_dist.loc
         y_pred = self.classifier(z_c).view(-1)
         self.test_acc.update(y_pred, y)
