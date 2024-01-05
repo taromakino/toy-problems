@@ -48,6 +48,7 @@ def main(args):
         plot = PLOT[args.dataset]
         plot(axes[0, 0], x_seed.squeeze().cpu().numpy())
         plot(axes[1, 0], x_seed.squeeze().cpu().numpy())
+        plot(axes[2, 0], x_seed.squeeze().cpu().numpy())
         for col_idx in range(1, N_COLS):
             zc_sample, zs_sample, zx_sample = sample_prior(rng, model)
             x_pred_causal = reconstruct_x(model, torch.hstack((zc_sample, zs_seed, zx_seed)))

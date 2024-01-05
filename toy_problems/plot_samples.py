@@ -3,7 +3,7 @@ import numpy as np
 import os
 import pytorch_lightning as pl
 import torch
-from data import N_CLASSES, N_ENVS, MAKE_DATA, PLOT
+from data import N_CLASSES, N_ENVS, PLOT
 from decoder_cnn import IMG_DECODE_SHAPE
 from vae import VAE
 from utils.enums import Task
