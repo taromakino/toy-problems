@@ -12,29 +12,31 @@ from utils.nn_utils import SkipMLP, one_hot, repeat_batch, arr_to_cov
 
 
 class Encoder(nn.Module):
-    def __init__(self, z_size, h_sizes):
+    def __init__(self, causal_size, spurious_size, exogenous_size, h_sizes):
         super().__init__()
-        self.z_size = z_size
+        self.causal_size = causal_size
+        self.spurious_size = spurious_size
+        self.exogenous_size = exogenous_size
         self.encoder_cnn = EncoderCNN()
         # Causal
-        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size)
-        self.offdiag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size ** 2)
-        self.diag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, z_size)
+        self.mu_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, causal_size)
+        self.offdiag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, causal_size ** 2)
+        self.diag_causal = SkipMLP(IMG_ENCODE_SIZE + N_ENVS, h_sizes, causal_size)
         # Spurious
-        self.mu_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
-        self.offdiag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size ** 2)
-        self.diag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
+        self.mu_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size)
+        self.offdiag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size ** 2)
+        self.diag_spurious = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, spurious_size)
         # Exogenous
-        self.mu_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size)
-        self.offdiag_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size ** 2)
-        self.diag_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size)
+        self.mu_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, exogenous_size)
+        self.offdiag_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, exogenous_size ** 2)
+        self.diag_exogenous = SkipMLP(IMG_ENCODE_SIZE, h_sizes, exogenous_size)
 
     def causal_dist(self, x, e):
         batch_size = len(x)
         e_one_hot = one_hot(e, N_ENVS)
         mu = self.mu_causal(x, e_one_hot)
         offdiag = self.offdiag_causal(x, e_one_hot)
-        offdiag = offdiag.reshape(batch_size, self.z_size, self.z_size)
+        offdiag = offdiag.reshape(batch_size, self.causal_size, self.causal_size)
         diag = self.diag_causal(x, e_one_hot)
         cov = arr_to_cov(offdiag, diag)
         return D.MultivariateNormal(mu, cov)
@@ -45,7 +47,7 @@ class Encoder(nn.Module):
         e_one_hot = one_hot(e, N_ENVS)
         mu = self.mu_spurious(x, y_one_hot, e_one_hot)
         offdiag = self.offdiag_spurious(x, y_one_hot, e_one_hot)
-        offdiag = offdiag.reshape(batch_size, self.z_size, self.z_size)
+        offdiag = offdiag.reshape(batch_size, self.spurious_size, self.spurious_size)
         diag = self.diag_spurious(x, y_one_hot, e_one_hot)
         cov = arr_to_cov(offdiag, diag)
         return D.MultivariateNormal(mu, cov)
@@ -54,7 +56,7 @@ class Encoder(nn.Module):
         batch_size = len(x)
         mu = self.mu_exogenous(x)
         offdiag = self.offdiag_exogenous(x)
-        offdiag = offdiag.reshape(batch_size, self.z_size, self.z_size)
+        offdiag = offdiag.reshape(batch_size, self.exogenous_size, self.exogenous_size)
         diag = self.diag_exogenous(x)
         cov = arr_to_cov(offdiag, diag)
         return D.MultivariateNormal(mu, cov)
@@ -68,9 +70,9 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, z_size, h_sizes):
+    def __init__(self, causal_size, spurious_size, exogenous_size, h_sizes):
         super().__init__()
-        self.mlp = SkipMLP(3 * z_size, h_sizes, IMG_DECODE_SIZE)
+        self.mlp = SkipMLP(causal_size + spurious_size + exogenous_size, h_sizes, IMG_DECODE_SIZE)
         self.decoder_cnn = DecoderCNN()
 
     def forward(self, x, z):
@@ -81,23 +83,23 @@ class Decoder(nn.Module):
 
 
 class Prior(nn.Module):
-    def __init__(self, z_size, init_sd):
+    def __init__(self, causal_size, spurious_size, exogenous_size, init_sd):
         super().__init__()
-        self.mu_causal = nn.Parameter(torch.zeros(N_ENVS, z_size))
-        self.offdiag_causal = nn.Parameter(torch.zeros(N_ENVS, z_size, z_size))
-        self.diag_causal = nn.Parameter(torch.zeros(N_ENVS, z_size))
+        self.mu_causal = nn.Parameter(torch.zeros(N_ENVS, causal_size))
+        self.offdiag_causal = nn.Parameter(torch.zeros(N_ENVS, causal_size, causal_size))
+        self.diag_causal = nn.Parameter(torch.zeros(N_ENVS, causal_size))
         nn.init.normal_(self.mu_causal, 0, init_sd)
         nn.init.normal_(self.offdiag_causal, 0, init_sd)
         nn.init.normal_(self.diag_causal, 0, init_sd)
-        self.mu_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, z_size))
-        self.offdiag_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, z_size, z_size))
-        self.diag_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, z_size))
+        self.mu_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, spurious_size))
+        self.offdiag_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, spurious_size, spurious_size))
+        self.diag_spurious = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, spurious_size))
         nn.init.normal_(self.mu_spurious, 0, init_sd)
         nn.init.normal_(self.offdiag_spurious, 0, init_sd)
         nn.init.normal_(self.diag_spurious, 0, init_sd)
-        self.mu_exogenous = nn.Parameter(torch.zeros(z_size))
-        self.offdiag_exogenous = nn.Parameter(torch.zeros(z_size, z_size))
-        self.diag_exogenous = nn.Parameter(torch.zeros(z_size))
+        self.mu_exogenous = nn.Parameter(torch.zeros(exogenous_size))
+        self.offdiag_exogenous = nn.Parameter(torch.zeros(exogenous_size, exogenous_size))
+        self.diag_exogenous = nn.Parameter(torch.zeros(exogenous_size))
         nn.init.normal_(self.mu_exogenous, 0, init_sd)
         nn.init.normal_(self.offdiag_exogenous, 0, init_sd)
         nn.init.normal_(self.diag_exogenous, 0, init_sd)
@@ -127,7 +129,7 @@ class Prior(nn.Module):
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, z_size, h_sizes, y_mult, beta, prior_reg_mult, init_sd, lr, weight_decay):
+    def __init__(self, task, causal_size, spurious_size, exogenous_size, h_sizes, y_mult, beta, prior_reg_mult, init_sd, lr, weight_decay):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
@@ -137,13 +139,13 @@ class VAE(pl.LightningModule):
         self.lr = lr
         self.weight_decay = weight_decay
         # q(z_c,z_s|x)
-        self.encoder = Encoder(z_size, h_sizes)
+        self.encoder = Encoder(causal_size, spurious_size, exogenous_size, h_sizes)
         # p(x|z_c, z_s)
-        self.decoder = Decoder(z_size, h_sizes)
+        self.decoder = Decoder(causal_size, spurious_size, exogenous_size, h_sizes)
         # p(z_c,z_s|y,e)
-        self.prior = Prior(z_size, init_sd)
+        self.prior = Prior(causal_size, spurious_size, exogenous_size, init_sd)
         # p(y|z)
-        self.classifier = nn.Linear(z_size, 1)
+        self.classifier = nn.Linear(causal_size, 1)
         self.val_acc = Accuracy('binary')
         self.test_acc = Accuracy('binary')
 

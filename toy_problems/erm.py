@@ -7,14 +7,14 @@ from torchmetrics import Accuracy
 
 
 class ERM(pl.LightningModule):
-    def __init__(self, z_size, lr, weight_decay):
+    def __init__(self, causal_size, lr, weight_decay):
         super().__init__()
         self.save_hyperparameters()
         self.cnn = EncoderCNN()
         self.classifier = nn.Sequential(
-            nn.Linear(IMG_ENCODE_SIZE, z_size),
+            nn.Linear(IMG_ENCODE_SIZE, causal_size),
             nn.LeakyReLU(),
-            nn.Linear(z_size, 1)
+            nn.Linear(causal_size, 1)
         )
         self.lr = lr
         self.weight_decay = weight_decay
