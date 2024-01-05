@@ -7,7 +7,6 @@ from utils.nn_utils import make_dataloader
 
 
 RNG = np.random.RandomState(0)
-PROB_ZERO_E0 = 0.75
 
 
 def flip_binary(x, flip_prob):
@@ -25,12 +24,7 @@ def make_trainval_data():
 
     y = flip_binary(digits.clone(), 0.25)
 
-    idxs_env0 = []
-    zero_idxs = np.where(digits == 0)[0]
-    one_idxs = np.where(digits == 1)[0]
-    idxs_env0.append(RNG.choice(zero_idxs, size=int(PROB_ZERO_E0 * len(zero_idxs))))
-    idxs_env0.append(RNG.choice(one_idxs, size=int((1 - PROB_ZERO_E0) * len(one_idxs))))
-    idxs_env0 = np.concatenate(idxs_env0)
+    idxs_env0 = RNG.choice(n_trainval, n_trainval // 2, replace=False)
     idxs_env1 = np.setdiff1d(np.arange(n_trainval), idxs_env0)
 
     e = torch.zeros(n_trainval, dtype=torch.long)
