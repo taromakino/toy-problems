@@ -7,18 +7,17 @@ from torchmetrics import Accuracy
 
 
 class ERM(pl.LightningModule):
-    def __init__(self, z_size, lr, weight_decay):
+    def __init__(self, parent_size, lr, weight_decay):
         super().__init__()
         self.save_hyperparameters()
         self.cnn = EncoderCNN()
         self.classifier = nn.Sequential(
-            nn.Linear(IMG_ENCODE_SIZE, z_size),
+            nn.Linear(IMG_ENCODE_SIZE, parent_size),
             nn.LeakyReLU(),
-            nn.Linear(z_size, 1)
+            nn.Linear(parent_size, 1)
         )
         self.lr = lr
         self.weight_decay = weight_decay
-        self.train_acc = Accuracy('binary')
         self.val_acc = Accuracy('binary')
         self.test_acc = Accuracy('binary')
 
@@ -34,13 +33,9 @@ class ERM(pl.LightningModule):
         self.train_acc.update(y_pred, y)
         return loss
 
-    def on_train_epoch_end(self):
-        self.log('train_acc', self.train_acc.compute())
-
     def validation_step(self, batch, batch_idx):
         y_pred, y = self(*batch)
         loss = F.binary_cross_entropy_with_logits(y_pred, y.float())
-        self.log('val_loss', loss, on_step=False, on_epoch=True)
         self.val_acc.update(y_pred, y)
 
     def on_validation_epoch_end(self):

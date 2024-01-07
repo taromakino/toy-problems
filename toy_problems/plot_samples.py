@@ -15,13 +15,14 @@ N_COLS = 10
 def sample_prior(rng, model):
     y = torch.tensor(rng.choice(N_CLASSES), dtype=torch.long, device=model.device)[None]
     e = torch.tensor(rng.choice(N_ENVS), dtype=torch.long, device=model.device)[None]
-    causal_dist, spurious_dist = model.prior(y, e)
-    zc_sample, zs_sample = causal_dist.sample(), spurious_dist.sample()
-    return zc_sample, zs_sample
+    prior_parent, prior_child = model.prior(y, e)
+    z_parent, z_child = prior_parent.sample(), prior_child.sample()
+    return z_parent, z_child
 
 
-def reconstruct_x(model, z):
-    batch_size = len(z)
+def reconstruct_x(model, z_parent, z_child):
+    batch_size = len(z_parent)
+    z = torch.hstack((z_parent, z_child))
     x_pred = model.decoder.mlp(z).reshape(batch_size, *IMG_DECODE_SHAPE)
     x_pred = model.decoder.decoder_cnn(x_pred)
     return torch.sigmoid(x_pred)
@@ -39,10 +40,9 @@ def main(args):
         ax.set_yticks([])
     plot = PLOT[args.dataset]
     for col_idx in range(N_COLS):
-        zc_sample, zs_sample = sample_prior(rng, model)
-        z_sample = torch.hstack((zc_sample, zs_sample))
-        x_sample = reconstruct_x(model, z_sample)
-        plot(axes[col_idx], x_sample.squeeze().detach().cpu().numpy())
+        z_parent, z_child = sample_prior(rng, model)
+        x_pred = reconstruct_x(model, z_parent, z_child)
+        plot(axes[col_idx], x_pred.squeeze().detach().cpu().numpy())
     fig_dpath = os.path.join(task_dpath, f'version_{args.seed}', 'fig')
     os.makedirs(fig_dpath, exist_ok=True)
     plt.savefig(os.path.join(fig_dpath, 'plot_samples.png'))
