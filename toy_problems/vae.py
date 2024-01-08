@@ -44,7 +44,7 @@ class Encoder(nn.Module):
         return D.MultivariateNormal(mu, cov)
 
     def forward(self, x, y, e):
-        x = self.encoder_cnn(x).flatten(start_dim=1)
+        x = self.encoder_cnn(x)
         parent_dist = self.parent_dist(x)
         child_dist = self.child_dist(x, y, e)
         return parent_dist, child_dist
@@ -99,15 +99,14 @@ class Prior(nn.Module):
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, z_size, h_sizes, y_mult, beta, reg_mult, init_sd, lr, wd):
+    def __init__(self, task, z_size, h_sizes, y_mult, prior_reg_mult, init_sd, lr, weight_decay):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
         self.y_mult = y_mult
-        self.beta = beta
-        self.reg_mult = reg_mult
+        self.prior_reg_mult = prior_reg_mult
         self.lr = lr
-        self.wd = wd
+        self.weight_decay = weight_decay
         # q(z_c,z_s|x)
         self.encoder = Encoder(z_size, h_sizes)
         # p(x|z_c, z_s)
@@ -141,8 +140,8 @@ class VAE(pl.LightningModule):
         kl_parent = D.kl_divergence(posterior_parent, prior_parent).mean()
         kl_child = D.kl_divergence(posterior_child, prior_child).mean()
         kl = kl_parent + kl_child
-        reg = torch.norm(torch.hstack((prior_parent.loc, prior_child.loc)), dim=1).mean()
-        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.reg_mult * reg
+        prior_reg = torch.norm(torch.hstack((prior_parent.loc, prior_child.loc)), dim=1).mean()
+        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + kl + self.prior_reg_mult * prior_reg
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -154,8 +153,6 @@ class VAE(pl.LightningModule):
         x, y, e, c, s = batch
         y_pred = self.classify(x)
         if dataloader_idx == 0:
-            loss = self.loss(x, y, e)
-            self.log('val_loss', loss, on_step=False, on_epoch=True, add_dataloader_idx=False)
             self.val_acc.update(y_pred, y)
         else:
             assert dataloader_idx == 1
@@ -181,4 +178,4 @@ class VAE(pl.LightningModule):
         self.log('test_acc', self.test_acc.compute())
 
     def configure_optimizers(self):
-        return AdamW(self.parameters(), lr=self.lr, weight_decay=self.wd)
+        return AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)

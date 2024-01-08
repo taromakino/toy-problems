@@ -33,11 +33,11 @@ def make_model(args, task, eval_stage):
     is_train = eval_stage is None
     if task == Task.ERM:
         if is_train:
-            return ERM(args.z_size, args.lr, args.wd)
+            return ERM(args.lr, args.weight_decay)
         else:
             return ERM.load_from_checkpoint(ckpt_fpath(args, task))
     elif task == Task.VAE:
-        return VAE(task, args.z_size, args.h_sizes, args.y_mult, args.beta, args.reg_mult, args.init_sd, args.lr, args.wd)
+        return VAE(task, args.z_size, args.h_sizes, args.y_mult, args.prior_reg_mult, args.init_sd, args.lr, args.weight_decay)
     else:
         assert task == Task.CLASSIFY
         return VAE.load_from_checkpoint(ckpt_fpath(args, Task.VAE), task=task)
@@ -66,7 +66,7 @@ def run_task(args, task, eval_stage):
         trainer = pl.Trainer(
             logger=CSVLogger(os.path.join(args.dpath, task.value), name='', version=args.seed),
             callbacks=[
-                ModelCheckpoint(monitor='val_loss', filename='best')],
+                ModelCheckpoint(monitor='val_acc', mode='max', filename='best')],
             max_epochs=args.n_epochs,
             deterministic=True)
         trainer.fit(model, data_train, [data_val, data_test])
@@ -103,16 +103,15 @@ if __name__ == '__main__':
     parser.add_argument('--task', type=Task, choices=list(Task))
     parser.add_argument('--eval_stage', type=EvalStage, choices=list(EvalStage))
     parser.add_argument('--train_ratio', type=float, default=0.9)
-    parser.add_argument('--batch_size', type=int, default=256)
+    parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--eval_batch_size', type=int, default=2048)
-    parser.add_argument('--n_workers', type=int, default=8)
+    parser.add_argument('--n_workers', type=int, default=12)
     parser.add_argument('--z_size', type=int, default=8)
     parser.add_argument('--h_sizes', nargs='+', type=int, default=[256, 256])
     parser.add_argument('--y_mult', type=float, default=1)
-    parser.add_argument('--beta', type=float, default=1)
-    parser.add_argument('--reg_mult', type=float, default=1e-5)
+    parser.add_argument('--prior_reg_mult', type=float, default=1e-5)
     parser.add_argument('--init_sd', type=float, default=1)
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--wd', type=float, default=1e-5)
+    parser.add_argument('--weight_decay', type=float, default=0.01)
     parser.add_argument('--n_epochs', type=int, default=100)
     main(parser.parse_args())
