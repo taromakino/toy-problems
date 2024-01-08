@@ -100,14 +100,13 @@ class Prior(nn.Module):
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, parent_size, child_size, h_sizes, y_mult, reg_mult, init_sd, lr, weight_decay):
+    def __init__(self, task, parent_size, child_size, h_sizes, y_mult, init_sd, lr, wd):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
         self.y_mult = y_mult
-        self.reg_mult = reg_mult
         self.lr = lr
-        self.weight_decay = weight_decay
+        self.wd = wd
         # q(z_c,z_s|x)
         self.encoder = Encoder(parent_size, child_size, h_sizes)
         # p(x|z_c, z_s)
@@ -141,8 +140,7 @@ class VAE(pl.LightningModule):
         kl_parent = D.kl_divergence(posterior_parent, prior_parent).mean()
         kl_child = D.kl_divergence(posterior_child, prior_child).mean()
         kl = kl_parent + kl_child
-        reg = torch.abs(z).sum(dim=1).mean()
-        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + kl + self.reg_mult * reg
+        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + kl
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -181,4 +179,4 @@ class VAE(pl.LightningModule):
         self.log('test_acc', self.test_acc.compute())
 
     def configure_optimizers(self):
-        return AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        return AdamW(self.parameters(), lr=self.lr, weight_decay=self.wd)
