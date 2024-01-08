@@ -11,9 +11,3 @@ MAKE_DATA = {
     'cmnist': data.cmnist.make_data,
     'dsprites': data.dsprites.make_data
 }
-
-
-PLOT = {
-    'cmnist': plot_red_green_image,
-    'dsprites': plot_red_green_image
-}

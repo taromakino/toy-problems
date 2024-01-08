@@ -3,10 +3,11 @@ import numpy as np
 import os
 import pytorch_lightning as pl
 import torch
-from data import N_CLASSES, N_ENVS, PLOT
+from data import N_CLASSES, N_ENVS
 from decoder_cnn import IMG_DECODE_SHAPE
 from vae import VAE
 from utils.enums import Task
+from utils.plot import *
 
 
 N_COLS = 10
@@ -35,14 +36,12 @@ def main(args):
     model = VAE.load_from_checkpoint(os.path.join(task_dpath, f'version_{args.seed}', 'checkpoints', 'best.ckpt'))
     model.eval()
     fig, axes = plt.subplots(1, N_COLS, figsize=(N_COLS, 2))
-    for ax in axes.flatten():
-        ax.set_xticks([])
-        ax.set_yticks([])
-    plot = PLOT[args.dataset]
+    for ax in axes:
+        remove_ticks(ax)
     for col_idx in range(N_COLS):
         z_parent, z_child = sample_prior(rng, model)
         x_pred = reconstruct_x(model, z_parent, z_child)
-        plot(axes[col_idx], x_pred.squeeze().detach().cpu().numpy())
+        plot_red_green_image(axes[col_idx], x_pred.squeeze().detach().cpu().numpy())
     fig_dpath = os.path.join(task_dpath, f'version_{args.seed}', 'fig')
     os.makedirs(fig_dpath, exist_ok=True)
     plt.savefig(os.path.join(fig_dpath, 'plot_samples.png'))
