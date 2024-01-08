@@ -33,13 +33,17 @@ class ERM(pl.LightningModule):
         self.train_acc.update(y_pred, y)
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx):
         y_pred, y = self(*batch)
-        loss = F.binary_cross_entropy_with_logits(y_pred, y.float())
-        self.val_acc.update(y_pred, y)
+        if dataloader_idx == 0:
+            self.val_acc.update(y_pred, y)
+        else:
+            assert dataloader_idx == 1
+            self.test_acc.update(y_pred, y)
 
     def on_validation_epoch_end(self):
         self.log('val_acc', self.val_acc.compute())
+        self.log('test_acc', self.test_acc.compute())
 
     def test_step(self, batch, batch_idx):
         y_pred, y = self(*batch)

@@ -56,7 +56,7 @@ def run_task(args, task, eval_stage):
                     ModelCheckpoint(monitor='val_acc', mode='max', filename='best')],
                 max_epochs=args.n_epochs,
                 deterministic=True)
-            trainer.fit(model, data_train, data_val)
+            trainer.fit(model, data_train, [data_val, data_test])
         else:
             trainer = pl.Trainer(
                 logger=CSVLogger(os.path.join(args.dpath, task.value, eval_stage.value), name='', version=args.seed),
@@ -70,7 +70,7 @@ def run_task(args, task, eval_stage):
                 ModelCheckpoint(monitor='val_loss', filename='best')],
             max_epochs=args.n_epochs,
             deterministic=True)
-        trainer.fit(model, data_train, data_val)
+        trainer.fit(model, data_train, [data_val, data_test])
     else:
         assert task == Task.CLASSIFY
         trainer = pl.Trainer(
