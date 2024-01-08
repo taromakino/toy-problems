@@ -12,23 +12,22 @@ from utils.nn_utils import SkipMLP, one_hot, repeat_batch, arr_to_cov
 
 
 class Encoder(nn.Module):
-    def __init__(self, parent_size, child_size, h_sizes):
+    def __init__(self, z_size, h_sizes):
         super().__init__()
-        self.parent_size = parent_size
-        self.child_size = child_size
+        self.z_size = z_size
         self.encoder_cnn = EncoderCNN()
-        self.mu_parent = SkipMLP(IMG_ENCODE_SIZE, h_sizes, parent_size)
-        self.offdiag_parent = SkipMLP(IMG_ENCODE_SIZE, h_sizes, parent_size ** 2)
-        self.diag_parent = SkipMLP(IMG_ENCODE_SIZE, h_sizes, parent_size)
-        self.mu_child = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, child_size)
-        self.offdiag_child = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, child_size ** 2)
-        self.diag_child = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, child_size)
+        self.mu_parent = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size)
+        self.offdiag_parent = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size ** 2)
+        self.diag_parent = SkipMLP(IMG_ENCODE_SIZE, h_sizes, z_size)
+        self.mu_child = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
+        self.offdiag_child = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size ** 2)
+        self.diag_child = SkipMLP(IMG_ENCODE_SIZE + N_CLASSES + N_ENVS, h_sizes, z_size)
 
     def parent_dist(self, x):
         batch_size = len(x)
         mu = self.mu_parent(x)
         offdiag = self.offdiag_parent(x)
-        offdiag = offdiag.reshape(batch_size, self.parent_size, self.parent_size)
+        offdiag = offdiag.reshape(batch_size, self.z_size, self.z_size)
         diag = self.diag_parent(x)
         cov = arr_to_cov(offdiag, diag)
         return D.MultivariateNormal(mu, cov)
@@ -39,7 +38,7 @@ class Encoder(nn.Module):
         e_one_hot = one_hot(e, N_ENVS)
         mu = self.mu_child(x, y_one_hot, e_one_hot)
         offdiag = self.offdiag_child(x, y_one_hot, e_one_hot)
-        offdiag = offdiag.reshape(batch_size, self.child_size, self.child_size)
+        offdiag = offdiag.reshape(batch_size, self.z_size, self.z_size)
         diag = self.diag_child(x, y_one_hot, e_one_hot)
         cov = arr_to_cov(offdiag, diag)
         return D.MultivariateNormal(mu, cov)
@@ -52,9 +51,9 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, parent_size, child_size, h_sizes):
+    def __init__(self, z_size, h_sizes):
         super().__init__()
-        self.mlp = SkipMLP(parent_size + child_size, h_sizes, IMG_DECODE_SIZE)
+        self.mlp = SkipMLP(z_size, h_sizes, IMG_DECODE_SIZE)
         self.decoder_cnn = DecoderCNN()
 
     def forward(self, x, z):
@@ -65,18 +64,18 @@ class Decoder(nn.Module):
 
 
 class Prior(nn.Module):
-    def __init__(self, parent_size, child_size, init_sd):
+    def __init__(self, z_size, init_sd):
         super().__init__()
-        self.mu_parent = nn.Parameter(torch.zeros(parent_size))
-        self.offdiag_parent = nn.Parameter(torch.zeros(parent_size, parent_size))
-        self.diag_parent = nn.Parameter(torch.zeros(parent_size))
+        self.mu_parent = nn.Parameter(torch.zeros(z_size))
+        self.offdiag_parent = nn.Parameter(torch.zeros(z_size, z_size))
+        self.diag_parent = nn.Parameter(torch.zeros(z_size))
         nn.init.normal_(self.mu_parent, 0, init_sd)
         nn.init.normal_(self.offdiag_parent, 0, init_sd)
         nn.init.normal_(self.diag_parent, 0, init_sd)
         # p(z_s|y,e)
-        self.mu_child = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, child_size))
-        self.offdiag_child = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, child_size, child_size))
-        self.diag_child = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, child_size))
+        self.mu_child = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, z_size))
+        self.offdiag_child = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, z_size, z_size))
+        self.diag_child = nn.Parameter(torch.zeros(N_CLASSES, N_ENVS, z_size))
         nn.init.normal_(self.mu_child, 0, init_sd)
         nn.init.normal_(self.offdiag_child, 0, init_sd)
         nn.init.normal_(self.diag_child, 0, init_sd)
@@ -100,23 +99,23 @@ class Prior(nn.Module):
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, parent_size, child_size, h_sizes, y_mult, beta, prior_reg_mult, init_sd, lr, wd):
+    def __init__(self, task, z_size, h_sizes, y_mult, beta, reg_mult, init_sd, lr, wd):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
         self.y_mult = y_mult
         self.beta = beta
-        self.prior_reg_mult = prior_reg_mult
+        self.reg_mult = reg_mult
         self.lr = lr
         self.wd = wd
         # q(z_c,z_s|x)
-        self.encoder = Encoder(parent_size, child_size, h_sizes)
+        self.encoder = Encoder(z_size, h_sizes)
         # p(x|z_c, z_s)
-        self.decoder = Decoder(parent_size, child_size, h_sizes)
+        self.decoder = Decoder(z_size, h_sizes)
         # p(z_c,z_s|y,e)
-        self.prior = Prior(parent_size, child_size, init_sd)
+        self.prior = Prior(z_size, init_sd)
         # p(y|z)
-        self.classifier = nn.Linear(parent_size, 1)
+        self.classifier = nn.Linear(z_size, 1)
         self.val_acc = Accuracy('binary')
         self.test_acc = Accuracy('binary')
 
@@ -142,8 +141,8 @@ class VAE(pl.LightningModule):
         kl_parent = D.kl_divergence(posterior_parent, prior_parent).mean()
         kl_child = D.kl_divergence(posterior_child, prior_child).mean()
         kl = kl_parent + kl_child
-        prior_reg = torch.norm(torch.hstack((prior_parent.loc, prior_child.loc)), dim=1).mean()
-        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.prior_reg_mult * prior_reg
+        reg = torch.norm(z, p=1, dim=1).mean()
+        loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.reg_mult * reg
         return loss
 
     def training_step(self, batch, batch_idx):
