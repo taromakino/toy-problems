@@ -53,7 +53,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, z_size, h_sizes):
         super().__init__()
-        self.mlp = SkipMLP(z_size, h_sizes, IMG_DECODE_SIZE)
+        self.mlp = SkipMLP(2 * z_size, h_sizes, IMG_DECODE_SIZE)
         self.decoder_cnn = DecoderCNN()
 
     def forward(self, x, z):
