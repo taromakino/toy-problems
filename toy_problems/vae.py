@@ -141,7 +141,7 @@ class VAE(pl.LightningModule):
         kl_parent = D.kl_divergence(posterior_parent, prior_parent).mean()
         kl_child = D.kl_divergence(posterior_child, prior_child).mean()
         kl = kl_parent + kl_child
-        reg = torch.norm(z, p=1, dim=1).mean()
+        reg = torch.norm(torch.hstack((prior_parent.loc, prior_child.loc)), dim=1).mean()
         loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + self.beta * kl + self.reg_mult * reg
         return loss
 
