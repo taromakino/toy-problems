@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from data import N_ENVS
 from utils.nn_utils import make_dataloader
 
 
@@ -24,11 +25,14 @@ def make_trainval_data():
 
     y = flip_binary(scale.copy(), 0.25)
 
-    idxs_env0 = RNG.choice(N_TRAINVAL, N_TRAINVAL // 2, replace=False)
-    idxs_env1 = np.setdiff1d(np.arange(N_TRAINVAL), idxs_env0)
+    idxs = RNG.permutation(N_TRAINVAL)
+    n_examples_per_env = N_TRAINVAL // N_ENVS
+    idxs_e1 = idxs[n_examples_per_env:2 * n_examples_per_env]
+    idxs_e2 = idxs[2 * n_examples_per_env:]
 
     e = np.zeros(N_TRAINVAL, dtype='long')
-    e[idxs_env1] = 1
+    e[idxs_e1] = 1
+    e[idxs_e2] = 2
 
     colors = np.full(N_TRAINVAL, np.nan)
     idxs_y0_e0 = np.where((y == 0) & (e == 0))[0]
@@ -39,6 +43,7 @@ def make_trainval_data():
     colors[idxs_y1_e0] = RNG.normal(0.6, 0.1, len(idxs_y1_e0))
     colors[idxs_y0_e1] = RNG.normal(0.4, 0.1, len(idxs_y0_e1))
     colors[idxs_y1_e1] = RNG.normal(0.7, 0.1, len(idxs_y1_e1))
+    colors[idxs_e2] = 0.5
     colors = np.clip(colors, 0, 1)[:, None, None]
 
     center_x = RNG.randint(WIDTH_LARGE // 2, IMAGE_SIZE - WIDTH_LARGE // 2 + 1, N_TRAINVAL)
