@@ -36,12 +36,12 @@ def make_model(args, task, eval_stage):
             return ERM(args.lr, args.weight_decay)
         else:
             return ERM.load_from_checkpoint(ckpt_fpath(args, task))
-    elif task == Task.PRETRAIN:
+    elif task == Task.VAE:
         return VAE(task, args.parent_size, args.child_size, args.h_sizes, args.prior_reg_mult, args.init_sd, args.lr,
             args.weight_decay)
     else:
-        assert task == Task.VAE or task == Task.CLASSIFY
-        return VAE.load_from_checkpoint(ckpt_fpath(args, Task.PRETRAIN), task=task)
+        assert task == Task.CLASSIFY
+        return VAE.load_from_checkpoint(ckpt_fpath(args, Task.VAE), task=task)
 
 
 def run_task(args, task, eval_stage):
@@ -63,7 +63,7 @@ def run_task(args, task, eval_stage):
                 max_epochs=1,
                 deterministic=True)
             trainer.test(model, data_eval)
-    elif task == Task.PRETRAIN or task == Task.VAE:
+    elif task == Task.VAE:
         trainer = pl.Trainer(
             logger=CSVLogger(os.path.join(args.dpath, task.value), name='', version=args.seed),
             callbacks=[
@@ -83,7 +83,6 @@ def run_task(args, task, eval_stage):
 
 def main(args):
     if args.task == Task.ALL:
-        run_task(args, Task.PRETRAIN, None)
         run_task(args, Task.VAE, None)
         run_task(args, Task.CLASSIFY, EvalStage.VAL)
         run_task(args, Task.CLASSIFY, EvalStage.TEST)
@@ -113,6 +112,7 @@ if __name__ == '__main__':
     parser.add_argument('--h_sizes', nargs='+', type=int, default=[256, 256])
     parser.add_argument('--prior_reg_mult', type=float, default=1e-5)
     parser.add_argument('--init_sd', type=float, default=1)
+    parser.add_argument('--n_alternate', type=int, default=100)
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--weight_decay', type=float, default=0.01)
     parser.add_argument('--n_epochs', type=int, default=100)

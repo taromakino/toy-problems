@@ -8,7 +8,6 @@ from encoder_cnn import IMG_ENCODE_SIZE, EncoderCNN
 from decoder_cnn import IMG_DECODE_SHAPE, IMG_DECODE_SIZE, DecoderCNN
 from torch.optim import AdamW
 from torchmetrics import Accuracy
-from utils.enums import Task
 from utils.nn_utils import SkipMLP, one_hot, repeat_batch, arr_to_cov
 
 
@@ -100,11 +99,12 @@ class Prior(nn.Module):
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, parent_size, child_size, h_sizes, prior_reg_mult, init_sd, lr, weight_decay):
+    def __init__(self, task, parent_size, child_size, h_sizes, prior_reg_mult, init_sd, n_alternate, lr, weight_decay):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
         self.prior_reg_mult = prior_reg_mult
+        self.n_alternate = n_alternate
         self.lr = lr
         self.weight_decay = weight_decay
         # q(z_c,z_s|x,y,e)
@@ -124,7 +124,24 @@ class VAE(pl.LightningModule):
         epsilon = torch.randn(batch_size, parent_size, 1).to(self.device)
         return mu + torch.bmm(scale_tril, epsilon).squeeze(-1)
 
-    def pretrain_loss(self, x, y, e):
+    def x_loss(self, x, y, e):
+        # z_c,z_s ~ q(z_c,z_s|x,y,e)
+        posterior_parent, posterior_child = self.encoder(x, y, e)
+        z_parent = self.sample_z(posterior_parent)
+        z_child = self.sample_z(posterior_child)
+        # E_q(z_c,z_s|x,y,e)[log p(x|z_c,z_s)]
+        z = torch.hstack((z_parent, z_child))
+        log_prob_x_z = self.decoder(x, z).mean()
+        # KL(q(z_c,z_s|x,y,e) || p(z_c,z_s|y,e))
+        prior_parent, prior_child = self.prior(y, e)
+        kl_parent = D.kl_divergence(posterior_parent, prior_parent).mean()
+        kl_child = D.kl_divergence(posterior_child, prior_child).mean()
+        kl = kl_parent + kl_child
+        prior_reg = torch.norm(torch.hstack((prior_parent.loc, prior_child.loc)), dim=1).mean()
+        loss = -log_prob_x_z + kl + self.prior_reg_mult * prior_reg
+        return loss
+
+    def y_loss(self, x, y, e):
         # z_c,z_s ~ q(z_c,z_s|x,y,e)
         posterior_parent, posterior_child = self.encoder(x, y, e)
         z_parent = self.sample_z(posterior_parent)
@@ -133,33 +150,12 @@ class VAE(pl.LightningModule):
         loss = F.binary_cross_entropy_with_logits(y_pred, y.float())
         return loss
 
-    def elbo(self, x, y, e):
-        # z_c,z_s ~ q(z_c,z_s|x,y,e)
-        posterior_parent, posterior_child = self.encoder(x, y, e)
-        z_parent = self.sample_z(posterior_parent)
-        z_child = self.sample_z(posterior_child)
-        # E_q(z_c,z_s|x)[log p(x|z_c,z_s)]
-        z = torch.hstack((z_parent, z_child))
-        log_prob_x_z = self.decoder(x, z).mean()
-        # E_q(z_c|x)[log p(y|z_c)]
-        y_pred = self.classifier(z_parent.detach()).view(-1)
-        log_prob_y_zc = -F.binary_cross_entropy_with_logits(y_pred, y.float())
-        # KL(q(z_c,z_s|x) || p(z_c|e)p(z_s|y,e))
-        prior_parent, prior_child = self.prior(y, e)
-        kl_parent = D.kl_divergence(posterior_parent, prior_parent).mean()
-        kl_child = D.kl_divergence(posterior_child, prior_child).mean()
-        kl = kl_parent + kl_child
-        prior_reg = torch.norm(torch.hstack((prior_parent.loc, prior_child.loc)), dim=1).mean()
-        loss = -log_prob_x_z - log_prob_y_zc + kl + self.prior_reg_mult * prior_reg
-        return loss
-
     def training_step(self, batch, batch_idx):
         x, y, e, c, s = batch
-        if self.task == Task.PRETRAIN:
-            loss = self.pretrain_loss(x, y, e)
+        if batch_idx % (2 * self.n_alternate) < self.n_alternate:
+            loss = self.x_loss(x, y, e)
         else:
-            assert self.task == Task.VAE
-            loss = self.elbo(x, y, e)
+            loss = self.y_loss(x, y, e)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx):
