@@ -44,13 +44,13 @@ def main(args):
         c=parent[subset_idxs],
         cmap=cmap_parent
     )
-    red_patch = mpatches.Patch(color='red', label=r'$y=0$')
-    blue_patch = mpatches.Patch(color='blue', label=r'$y=1$')
+    red_patch = mpatches.Patch(color='red', label='Zero')
+    blue_patch = mpatches.Patch(color='blue', label='One')
     handles = [red_patch, blue_patch]
     fig.legend(handles=handles, loc='lower center', ncol=len(handles), bbox_to_anchor=[0.5, 0])
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.2)
-    plt.savefig(os.path.join(fig_dpath, 'plot_parent_umap.pdf'))
+    plt.savefig(os.path.join(fig_dpath, 'plot_umap_parent.pdf'))
     plt.close()
 
     z_child = to_umap(z_child)
@@ -64,5 +64,6 @@ def main(args):
         cmap=cmap_child
     )
     fig.tight_layout()
-    plt.savefig(os.path.join(fig_dpath, 'plot_child_umap.pdf'))
+    fig.subplots_adjust(bottom=0.2)
+    plt.savefig(os.path.join(fig_dpath, 'plot_umap_child.pdf'))
     plt.close()
