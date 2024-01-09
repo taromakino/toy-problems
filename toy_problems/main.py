@@ -1,4 +1,5 @@
 import os
+import plot_counterfactual
 import plot_reconstruction
 import plot_samples
 import plot_umap
@@ -87,6 +88,7 @@ def main(args):
         run_task(args, Task.VAE, None)
         run_task(args, Task.CLASSIFY, EvalStage.VAL)
         run_task(args, Task.CLASSIFY, EvalStage.TEST)
+        plot_counterfactual.main(args)
         plot_reconstruction.main(args)
         plot_samples.main(args)
         plot_umap.main(args)

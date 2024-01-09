@@ -2,10 +2,10 @@ import os
 import pytorch_lightning as pl
 import torch
 from data import N_CLASSES, N_ENVS, MAKE_DATA
-from decoder_cnn import IMG_DECODE_SHAPE
-from vae import VAE
+from plot_counterfactual import reconstruct_x
 from utils.enums import Task
 from utils.plot import *
+from vae import VAE
 
 
 N_EXAMPLES = 10
@@ -18,14 +18,6 @@ def sample_prior(rng, model):
     prior_parent, prior_child = model.prior(y, e)
     z_parent, z_child = prior_parent.sample(), prior_child.sample()
     return z_parent, z_child
-
-
-def reconstruct_x(model, z_parent, z_child):
-    batch_size = len(z_parent)
-    z = torch.hstack((z_parent, z_child))
-    x_pred = model.decoder.mlp(z).reshape(batch_size, *IMG_DECODE_SHAPE)
-    x_pred = model.decoder.decoder_cnn(x_pred)
-    return torch.sigmoid(x_pred)
 
 
 def main(args):

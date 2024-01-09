@@ -1,13 +1,11 @@
-import matplotlib.pyplot as plt
-import numpy as np
 import os
 import pytorch_lightning as pl
 import torch
 from data import N_CLASSES, N_ENVS
 from decoder_cnn import IMG_DECODE_SHAPE
-from vae import VAE
 from utils.enums import Task
 from utils.plot import *
+from vae import VAE
 
 
 N_COLS = 10
