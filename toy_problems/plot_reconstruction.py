@@ -1,7 +1,7 @@
 import os
 import pytorch_lightning as pl
 import torch
-from data import N_CLASSES, N_ENVS
+from data import N_CLASSES, N_ENVS, MAKE_DATA
 from decoder_cnn import IMG_DECODE_SHAPE
 from vae import VAE
 from utils.enums import Task
