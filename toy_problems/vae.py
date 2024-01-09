@@ -153,9 +153,9 @@ class VAE(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, y, e, c, s = batch
         if batch_idx % (2 * self.n_alternate) < self.n_alternate:
-            loss = self.x_loss(x, y, e)
-        else:
             loss = self.y_loss(x, y, e)
+        else:
+            loss = self.x_loss(x, y, e)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx):
