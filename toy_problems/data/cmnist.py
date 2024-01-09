@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import torch
+from data import N_ENVS
 from torchvision import datasets
 from utils.nn_utils import make_dataloader
 
@@ -24,11 +25,14 @@ def make_trainval_data():
 
     y = flip_binary(digits.clone(), 0.25)
 
-    idxs_env0 = RNG.choice(n_trainval, n_trainval // 2, replace=False)
-    idxs_env1 = np.setdiff1d(np.arange(n_trainval), idxs_env0)
+    idxs = RNG.permutation(n_trainval)
+    n_examples_per_env = n_trainval // N_ENVS
+    idxs_e1 = idxs[n_examples_per_env:2 * n_examples_per_env]
+    idxs_e2 = idxs[2 * n_examples_per_env:]
 
     e = torch.zeros(n_trainval, dtype=torch.long)
-    e[idxs_env1] = 1
+    e[idxs_e1] = 1
+    e[idxs_e2] = 2
 
     colors = np.full(n_trainval, np.nan)
     idxs_y0_e0 = np.where((y == 0) & (e == 0))[0]
@@ -39,6 +43,7 @@ def make_trainval_data():
     colors[idxs_y1_e0] = RNG.normal(0.6, 0.1, len(idxs_y1_e0))
     colors[idxs_y0_e1] = RNG.normal(0.4, 0.1, len(idxs_y0_e1))
     colors[idxs_y1_e1] = RNG.normal(0.7, 0.1, len(idxs_y1_e1))
+    colors[idxs_e2] = 0.5
     colors = np.clip(colors, 0, 1)[:, None, None]
 
     x = torch.stack([x, x], dim=1)

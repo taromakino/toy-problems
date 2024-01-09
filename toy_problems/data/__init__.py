@@ -1,10 +1,9 @@
+N_CLASSES = 2
+N_ENVS = 3
+
+
 import data.cmnist
 import data.dsprites
-from utils.plot import plot_red_green_image
-
-
-N_CLASSES = 2
-N_ENVS = 2
 
 
 MAKE_DATA = {
