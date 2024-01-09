@@ -10,6 +10,7 @@ setup(
         'pytorch-lightning',
         'seaborn',
         'torch',
-        'torchvision'
+        'torchvision',
+        'umap-learn'
     ]
 )

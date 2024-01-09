@@ -1,6 +1,7 @@
 import os
 import plot_reconstruction
 import plot_samples
+import plot_umap
 import pytorch_lightning as pl
 from argparse import ArgumentParser
 from data import MAKE_DATA
@@ -88,6 +89,7 @@ def main(args):
         run_task(args, Task.CLASSIFY, EvalStage.TEST)
         plot_reconstruction.main(args)
         plot_samples.main(args)
+        plot_umap.main(args)
     elif args.task == Task.ERM:
         run_task(args, Task.ERM, None)
         run_task(args, Task.ERM, EvalStage.VAL)
