@@ -99,15 +99,14 @@ class Prior(nn.Module):
 
 
 class VAE(pl.LightningModule):
-    def __init__(self, task, parent_size, child_size, h_sizes, y_mult, prior_reg_mult, init_sd, lr, weight_decay):
+    def __init__(self, task, parent_size, child_size, h_sizes, prior_reg_mult, init_sd, lr, weight_decay):
         super().__init__()
         self.save_hyperparameters()
         self.task = task
-        self.y_mult = y_mult
         self.prior_reg_mult = prior_reg_mult
         self.lr = lr
         self.weight_decay = weight_decay
-        # q(z_c,z_s|x)
+        # q(z_c,z_s|x,y,e)
         self.encoder = Encoder(parent_size, child_size, h_sizes)
         # p(x|z_c, z_s)
         self.decoder = Decoder(parent_size, child_size, h_sizes)
@@ -124,18 +123,18 @@ class VAE(pl.LightningModule):
         epsilon = torch.randn(batch_size, parent_size, 1).to(self.device)
         return mu + torch.bmm(scale_tril, epsilon).squeeze(-1)
 
-    def loss(self, x, y, e):
-        # z_c,z_s ~ q(z_c,z_s|x)
+    def x_loss(self, x, y, e):
+        # z_c,z_s ~ q(z_c,z_s|x,y,e)
         posterior_parent, posterior_child = self.encoder(x, y, e)
         z_parent = self.sample_z(posterior_parent)
         z_child = self.sample_z(posterior_child)
-        # E_q(z_c,z_s|x)[log p(x|z_c,z_s)]
+        # E_q(z_c,z_s|x,y,e)[log p(x|z_c,z_s)]
         z = torch.hstack((z_parent, z_child))
         log_prob_x_z = self.decoder(x, z).mean()
         # E_q(z_c|x)[log p(y|z_c)]
         y_pred = self.classifier(z_parent).view(-1)
         log_prob_y_zc = -F.binary_cross_entropy_with_logits(y_pred, y.float())
-        # KL(q(z_c,z_s|x) || p(z_c|e)p(z_s|y,e))
+        # KL(q(z_c,z_s|x,y,e) || p(z_c,z_s|y,e))
         prior_parent, prior_child = self.prior(y, e)
         kl_parent = D.kl_divergence(posterior_parent, prior_parent).mean()
         kl_child = D.kl_divergence(posterior_child, prior_child).mean()
@@ -144,9 +143,28 @@ class VAE(pl.LightningModule):
         loss = -log_prob_x_z - self.y_mult * log_prob_y_zc + kl + self.prior_reg_mult * prior_reg
         return loss
 
+    def y_loss(self, x, y, e):
+        # z_c,z_s ~ q(z_c,z_s|x,y,e)
+        posterior_parent, posterior_child = self.encoder(x, y, e)
+        z_parent = self.sample_z(posterior_parent)
+        # E_q(z_c|x)[log p(y|z_c)]
+        y_pred = self.classifier(z_parent).view(-1)
+        log_prob_y_zc = -F.binary_cross_entropy_with_logits(y_pred, y.float())
+        # KL(q(z_c,z_s|x,y,e) || p(z_c,z_s|y,e))
+        prior_parent, prior_child = self.prior(y, e)
+        kl_parent = D.kl_divergence(posterior_parent, prior_parent).mean()
+        kl_child = D.kl_divergence(posterior_child, prior_child).mean()
+        kl = kl_parent + kl_child
+        prior_reg = torch.norm(torch.hstack((prior_parent.loc, prior_child.loc)), dim=1).mean()
+        loss = -log_prob_y_zc + kl + self.prior_reg_mult * prior_reg
+        return loss
+
     def training_step(self, batch, batch_idx):
         x, y, e, c, s = batch
-        loss = self.loss(x, y, e)
+        if batch_idx % 2 == 0:
+            loss = self.x_loss(x, y, e)
+        else:
+            loss = self.y_loss(x, y, e)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx):
